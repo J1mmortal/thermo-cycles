@@ -9,8 +9,8 @@ class CycleState:
     cycle_type: str
     mode: Optional[str] = None
     known: Dict[str, Any] = field(default_factory=dict)
-    internal: Dict[str, Any] = field(default_factory=dict)  # canonical inputs for solver
-    states: Dict[int, State] = field(default_factory=dict)  # 1,2,3,4,...
+    internal: Dict[str, Any] = field(default_factory=dict)
+    states: Dict[int, State] = field(default_factory=dict)
     results: Dict[str, float] = field(default_factory=dict)
 
     def add_state(self, sid: int, **props: float) -> State:
