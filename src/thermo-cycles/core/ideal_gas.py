@@ -9,10 +9,6 @@ class IdealGasCycleBase:
         self.Cv = R / (gamma - 1.0)
 
     def compute_state_properties(self, st: State) -> None:
-        """
-        Given any 2 independent props among T, P, V, fill in rest using ideal gas.
-        Extend later as needed.
-        """
         if st.has("T", "P"):
             T = st.get("T")
             P = st.get("P")
