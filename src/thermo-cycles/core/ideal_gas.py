@@ -97,3 +97,24 @@ class IdealGasCycleBase:
     def isobaric_from(self, s1: State, s2: State, known_prop: str) -> None:
         P1 = s1.get("P")
         P2 = P1
+        
+        if known_prop == "T":
+            T2 = s2.get("T")
+            V2 = self.R * T2 / P2
+            U2 = self.Cv * T2
+            H2 = self.Cp * T2
+            S2 = self.Cp * ln(T2/273.15) - self.R * ln(P2/(10**5))
+            s2.set(P=P2, V=V2, U=U2, H=H2, S=S2)
+            
+        elif known_prop == "V":
+            V2 = s2.get("V")
+            T2 = P2 * V2 / self.R
+            U2 = self.Cv * T2
+            H2 = self.Cp * T2
+            S2 = self.Cp * ln(T2/273.15) - self.R * ln(P2/(10**5))
+            s2.set(T=T2, V=V2, U=U2, H=H2, S=S2)
+            
+    def heat_supply(self, s1: State, s2: State, q_supply: str) -> None:
+        T1 = s1.get("T")
+        T2 = T1 + q_supply / self.Cp
+        s2.set(T=T2)
