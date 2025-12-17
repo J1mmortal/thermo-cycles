@@ -38,12 +38,6 @@ class InputInterpreter:
         return cs
 
     def _build_internal_for_mode(self, cycle_type: str, mode: str, known: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Convert known raw inputs into a canonical internal set
-        specific to (cycle_type, mode).
-        This is where you enforce things like:
-        - For Atkinson, always define T1,P1,r_c,r_e and either T3 or Q_in.
-        """
         internal: Dict[str, Any] = {}
 
         if cycle_type == "atkinson":
@@ -57,15 +51,13 @@ class InputInterpreter:
                 elif "Q_IN" in known:
                     internal["Q_IN"] = known["Q_IN"]
                 else:
-                    # you could set a default T3 or raise
                     raise ValueError("Atkinson design mode needs T3 or Q_IN")
             elif mode == "efficiency":
                 internal["T1"] = known["T1"]
                 internal["T3_MAX"] = known["T3_MAX"]
                 internal["ETA_TARGET"] = known["ETA_TARGET"]
-                # you might also put r_c,r_e ranges here
             else:
                 raise NotImplementedError(f"Mode {mode} not implemented for Atkinson")
 
-        # later: elif cycle_type == "otto": ...
+        #TODO: elif cycle_type == "otto": ...
         return internal
