@@ -8,8 +8,8 @@ class InputInterpreter:
         self._patterns = {
             "atkinson": [
                 #each pattern: (mode_name, required_keys, optional_keys)
-                ("design", {"T1", "P1", "R_C", "R_E"}, {"T3", "Q_IN"}),
-                ("efficiency", {"T1", "T3_MAX", "ETA_TARGET"}, set()),
+                ("design", {"T1", "P1", "R_C"}, {"T3", "Q_IN"}),
+                ("efficiency", {"T1", "T3_MAX", "R_C_MIN", "R_C_MAX", "P_RATIO", "P3_MAX"}, set()),
             ]
         }
 
