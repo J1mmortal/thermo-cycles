@@ -9,7 +9,7 @@ class InputInterpreter:
             "atkinson": [
                 #each pattern: (mode_name, required_keys, optional_keys)
                 ("design", {"T1", "P1", "R_C"}, {"T3", "Q_IN"}),
-                ("efficiency", {"T1", "T3_MAX", "R_C_MIN", "R_C_MAX", "P_RATIO", "P3_MAX"}, set()),
+                ("efficiency", {"T1", "T3_MAX", "R_C_MIN", "R_C_MAX"}, {"P_RATIO", "P2_MAX"}),
             ]
         }
 
@@ -41,7 +41,7 @@ class InputInterpreter:
         internal: Dict[str, Any] = {}
 
         if cycle_type == "atkinson":
-            if mode == "design":
+            if mode == "DESIGN":
                 internal["T1"] = known["T1"]
                 internal["P1"] = known["P1"]
                 internal["R_C"] = known["R_C"]
@@ -51,11 +51,18 @@ class InputInterpreter:
                 elif "Q_IN" in known:
                     internal["Q_IN"] = known["Q_IN"]
                 else:
-                    raise ValueError("Atkinson design mode needs T3 or Q_IN")
-            elif mode == "efficiency":
+                    raise ValueError("Atkinson DESIGN mode needs T3 or Q_IN")
+            elif mode == "EFFICIENCY":
                 internal["T1"] = known["T1"]
                 internal["T3_MAX"] = known["T3_MAX"]
-                internal["ETA_TARGET"] = known["ETA_TARGET"]
+                internal["R_C_MIN"] = known["R_C_MIN"]
+                internal["R_C_MAX"] = known["R_C_MAX"]
+                if "P_RATIO" in known:
+                    internal["P_RATIO"] = known["P_RATIO"]
+                elif "P2_MAX" in known:
+                    internal["P2_MAX"] = known["P2_MAX"]
+                else:
+                    raise ValueError("Atkinson EFFICIENCY mode needs P_RATIO or P2_MAX")
             else:
                 raise NotImplementedError(f"Mode {mode} not implemented for Atkinson")
 
