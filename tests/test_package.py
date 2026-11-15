@@ -22,7 +22,11 @@ def test_units():
     assert degC(25) == pytest.approx(298.15)
 
 def test_no_old_modules_and_no_matplotlib_import():
+    import subprocess
     import thermo_cycles  # noqa: F401
-    assert "matplotlib" not in sys.modules
+    # fresh interpreter: other tests (plotting) legitimately import matplotlib into this process
+    out = subprocess.run([sys.executable, "-c", "import sys, thermo_cycles; print('matplotlib' in sys.modules)"],
+                         capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "False"
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("thermo_cycles.core")
