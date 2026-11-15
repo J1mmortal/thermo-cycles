@@ -242,8 +242,9 @@ def test_margins_plot_limits_placeholders():
     assert len(m) == 0 and m.ok and m.violated == () and m.worst is None
     with pytest.raises(NotImplementedError):
         c.plot("Ts")
-    with pytest.raises(NotImplementedError, match="limits"):
-        Cycle("otto", T1=300, P1=1e5, r_c=8, q_in=1e6, limits={"T_max": 2500})
+    # limits are real since Task 11 (details in tests/test_margins.py)
+    lim = Cycle("otto", T1=300, P1=1e5, r_c=8, q_in=1e6, limits={"T_max": 5000})
+    assert lim.margins.ok and lim.margins["T_max"].value == pytest.approx(lim.results.T_max)
     with pytest.raises(InputError, match="on_violation"):
         Cycle("otto", T1=300, P1=1e5, r_c=8, q_in=1e6, on_violation="shout")
 

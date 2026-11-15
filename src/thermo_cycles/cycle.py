@@ -4,44 +4,20 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import warnings
 from collections.abc import Mapping as _MappingABC
 from types import MappingProxyType
 from typing import Any, Mapping
 
-from .errors import InputError, UnknownInputError
+from .errors import InputError, LimitViolationError, LimitViolationWarning, UnknownInputError
 from .fluids import AIR
+from .margins import check_limit_value, describe_violations, evaluate_limits, parse_limit_key
 from .model.cycle_def import get_cycle
 from .solver import CHECK_MODES, analyse, resolve_inputs, resolve_name, solve_cycle, system_for
 
 __all__ = ["Cycle", "requirements"]
 
 VIOLATION_MODES = ("warn", "raise", "ignore")
-
-
-class _EmptyMarginReport(_MappingABC):
-    """Placeholder margin report until margins are implemented (plan Task 11): no limits, nothing violated."""
-
-    violated = ()
-    ok = True
-    worst = None
-
-    def __getitem__(self, key):
-        raise KeyError(key)
-
-    def __iter__(self):
-        return iter(())
-
-    def __len__(self):
-        return 0
-
-    def table(self) -> str:
-        return "(no limits)"
-
-    def __repr__(self):
-        return "MarginReport({})"
-
-
-_NO_MARGINS = _EmptyMarginReport()
 
 
 def _fluid_or_air(fluid):
@@ -55,7 +31,7 @@ class Cycle:
     new cycle. See spec section 4 for the arguments.
     """
 
-    __slots__ = ("_cs", "_limits", "_allow_redundant", "_check", "_on_violation")
+    __slots__ = ("_cs", "_limits", "_margins", "_allow_redundant", "_check", "_on_violation")
 
     def __init__(self, name: str, *, fluid=None, limits: "Mapping[str, float] | None" = None,
                  allow_redundant: bool = False, check: str = "raise", on_violation: str = "warn",
@@ -66,14 +42,23 @@ class Cycle:
             raise InputError(f"on_violation must be one of {VIOLATION_MODES}, got {on_violation!r}.")
         if limits is not None and not isinstance(limits, _MappingABC):
             raise InputError(f"limits must be a mapping such as {{'T_max': 2500}}, got {type(limits).__name__}.")
-        if limits:
-            # fail loudly rather than silently ignore a limit the user relies on
-            raise NotImplementedError("limits (margins) are not implemented yet in this build of thermo_cycles "
-                                      "(planned: v0.1 margins). Construct the Cycle without limits.")
         defn = get_cycle(name)
-        cs = solve_cycle(defn, _fluid_or_air(fluid), inputs, allow_redundant=bool(allow_redundant), check=check)
+        fl = _fluid_or_air(fluid)
+        if limits:      # unknown keys and bad values fail before the solve (spec 11)
+            system = system_for(defn, fl)
+            for key, val in limits.items():
+                parse_limit_key(key, system)
+                check_limit_value(key, val)
+        cs = solve_cycle(defn, fl, inputs, allow_redundant=bool(allow_redundant), check=check)
+        report = evaluate_limits(cs, limits or {})
+        if report.violated and on_violation != "ignore":
+            message = describe_violations(report.violated)
+            if on_violation == "raise":
+                raise LimitViolationError(message, violated=report.violated)
+            warnings.warn(message, LimitViolationWarning, stacklevel=2)
         object.__setattr__(self, "_cs", cs)
         object.__setattr__(self, "_limits", MappingProxyType(dict(limits or {})))
+        object.__setattr__(self, "_margins", report)
         object.__setattr__(self, "_allow_redundant", bool(allow_redundant))
         object.__setattr__(self, "_check", check)
         object.__setattr__(self, "_on_violation", on_violation)
@@ -130,8 +115,8 @@ class Cycle:
 
     @property
     def margins(self):
-        """Margin report; empty until margins are implemented (plan Task 11)."""
-        return _NO_MARGINS
+        """``MarginReport`` for the ``limits`` given (empty without limits) with the second-law numbers (spec 11)."""
+        return self._margins
 
     @property
     def cycle_state(self):
