@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import difflib
 import math
+import numbers
+import warnings
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Mapping
 
-from ..errors import UnknownInputError
+import numpy as np
+
+from ..errors import InputError, InputPlausibilityWarning, UnknownInputError
 from ..fluids.ideal_gas import IdealGas
 from ..model.cycle_def import CycleDef, result_vars, state_ids, step_vars, validate_cycle
 from ..model.relations import Relation, default_scale, fixed, linear, product
@@ -240,3 +244,146 @@ def build_system(defn: CycleDef, fluid) -> EquationSystem:
         var_kind=MappingProxyType(kind), scan_range=MappingProxyType(rng), candidates=candidates,
         defaults=MappingProxyType(defaults), aliases=MappingProxyType(aliases), cycle=defn,
         equivalent=MappingProxyType(equivalent), fluid=fluid)
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Input resolution (spec 3 look-up order, 9.8 validation; plan Task 7)
+
+# Old spellings that mean different things in different books: suggest every meaning the cycle has.
+# Cengel & Boles call the cutoff ratio r_c and the dual-cycle pressure ratio r_p (spec 3, naming clash).
+_AMBIGUOUS_OLD = {"rc": ("r_c", "cutoff"), "rp": ("r_p", "alpha"), "re": ("r_e",)}
+_AMBIGUOUS_NOTE = {
+    "rc": "(Cengel & Boles call the cutoff ratio r_c; here r_c is the compression ratio v1/v2.)",
+    "rp": "(Cengel & Boles call the dual-cycle pressure ratio r_p; here that is alpha, and r_p is the "
+          "Brayton pressure ratio.)"}
+# Quantities computed after the solve (spec 9.1): they involve max/min and cannot be inputs.
+_POST_SOLVE = ("eta_carnot", "eta_ii", "t_max", "t_min", "p_max", "p_min", "v_max", "v_min")
+
+_UNITS = {"T": "K", "P": "Pa", "v": "m³/kg", "u": "J/kg", "h": "J/kg", "s": "J/(kg·K)"}
+
+
+def _cycle_name(system: EquationSystem) -> str:
+    return system.cycle.name if system.cycle is not None else "system"
+
+
+def _unit(system: EquationSystem, name: str) -> str:
+    """SI unit of a variable, for messages ('' for ratios and efficiencies)."""
+    sids = state_ids(system.cycle) if system.cycle is not None else ()
+    if name[:1] in _UNITS and name[1:] in sids:
+        return _UNITS[name[:1]]
+    if name in ("q_in", "q_out", "w_net", "w_compression", "w_expansion") or name[:2] in ("q_", "w_"):
+        return "J/kg"
+    if name == "mep":
+        return "Pa"
+    if name.startswith("dT"):
+        return "K"
+    return ""
+
+
+def _with_unit(value: float, unit: str) -> str:
+    return f"{value:g} {unit}" if unit else f"{value:g}"
+
+
+def resolve_name(system: EquationSystem, name: object) -> str:
+    """Canonical variable name for ``name`` (spec 3): exact, then unique case-insensitive, then alias.
+
+    The alias table is matched exactly (``"R"`` is not taken for the alias ``"r"``: it is far more likely
+    the gas constant). Anything else raises ``UnknownInputError`` with difflib suggestions; old spellings
+    that mean different things in different books (``rc``: r_c or cutoff) suggest every meaning.
+    """
+    cyc = _cycle_name(system)
+    if not isinstance(name, str):
+        raise UnknownInputError(f"{cyc}: input names must be strings, got {name!r}.",
+                                name=name, suggestions=(), accepted=system.variables)
+    if name in system.variables:
+        return name
+    low = name.lower()
+    ci = [v for v in system.variables if v.lower() == low]
+    if len(ci) == 1:
+        return ci[0]
+    if name in system.aliases:
+        return system.aliases[name]
+    if ci:      # two variables differing only in case (not in the v0.1 catalogue)
+        raise UnknownInputError(f"{cyc}: input {name!r} matches {', '.join(ci)} when case is ignored; "
+                                f"use the exact name.", name=name, suggestions=tuple(ci),
+                                accepted=system.variables)
+    if low in _POST_SOLVE:
+        raise UnknownInputError(f"{cyc}: {name!r} is computed after the solve (it involves a max or min over "
+                                f"the cycle) and cannot be an input.", name=name, suggestions=(),
+                                accepted=system.variables)
+    key = low.replace("_", "")
+    known = set(system.variables)
+    meanings = [s for s in _AMBIGUOUS_OLD.get(key, ()) if s in known]
+    sugg = list(meanings)
+    lower_map = {v.lower(): v for v in system.variables}
+    lower_map.update({a.lower(): t for a, t in system.aliases.items()})
+    for m in difflib.get_close_matches(low, list(lower_map), n=5, cutoff=0.6):
+        if lower_map[m] not in sugg:
+            sugg.append(lower_map[m])
+    hint = f" Did you mean: {', '.join(sugg)}?" if sugg else ""
+    if len(meanings) > 1 and key in _AMBIGUOUS_NOTE:
+        hint += " " + _AMBIGUOUS_NOTE[key]
+    raise UnknownInputError(f"{cyc}: unknown input {name!r}.{hint}", name=name, suggestions=tuple(sugg),
+                            accepted=system.variables)
+
+
+def _to_float(cyc: str, name: str, value: object) -> float:
+    """One value per spec 9.8: real and finite; ints and numpy scalars accepted; bools, strings not."""
+    if isinstance(value, (bool, np.bool_)):
+        raise InputError(f"{cyc}: {name} = {value!r} is a bool; give a number.")
+    if isinstance(value, str):
+        raise InputError(f"{cyc}: {name} = {value!r} is a string; give a number ({name}=300, not '300').")
+    if isinstance(value, numbers.Complex) and not isinstance(value, numbers.Real):
+        raise InputError(f"{cyc}: {name} = {value!r} is complex; inputs must be real numbers.")
+    if not isinstance(value, numbers.Real):
+        raise InputError(f"{cyc}: {name} = {value!r} ({type(value).__name__}) is not a real number; "
+                         f"give one scalar value.")
+    x = float(value)
+    if not math.isfinite(x):
+        raise InputError(f"{cyc}: {name} = {x!r} is not finite; inputs must be finite real numbers.")
+    return x
+
+
+def resolve_inputs(system: EquationSystem, raw: "Mapping[str, object]") -> "dict[str, float]":
+    """Canonical names and validated float values of user inputs (spec 3 and 9.8), in the given order.
+
+    - Names: exact, then a unique case-insensitive match, then the alias table; else ``UnknownInputError``.
+      Two spellings of one variable raise ``InputError``.
+    - Values: real and finite (ints and numpy scalars are converted with ``float()``); a variable of
+      positive kind must be > 0; every value must lie inside the variable's physical range (the solver's
+      scan range, spec 9.5), else ``InputError`` naming the input. Without that check a value such as
+      T4 = 2e5 K reaches the solver and the no-solution message blames another input.
+    - Plausibility: a given state pressure below 1 000 Pa or state temperature below 100 K emits
+      ``InputPlausibilityWarning``: those usually mean kPa or degrees Celsius were passed.
+    """
+    cyc = _cycle_name(system)
+    sids = state_ids(system.cycle) if system.cycle is not None else ()
+    out: "dict[str, float]" = {}
+    spelled: "dict[str, str]" = {}
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            raise InputError(f"{cyc}: input names must be strings, got {key!r} = {value!r}.")
+        name = resolve_name(system, key)
+        if name in out:
+            raise InputError(f"{cyc}: {spelled[name]!r} and {key!r} both give {name}; pass it once.")
+        spelled[name] = key
+        x = _to_float(cyc, name, value)
+        unit = _unit(system, name)
+        if system.var_kind.get(name) == "positive" and not x > 0:
+            raise InputError(f"{cyc}: {name} = {_with_unit(x, unit)} must be > 0.")
+        lo, hi, _ = system.scan_range[name]
+        if not lo <= x <= hi:
+            raise InputError(f"{cyc}: {name} = {_with_unit(x, unit)} is outside the range thermo_cycles can "
+                             f"solve for it ({lo:g} to {_with_unit(hi, unit)}). Check the value and its "
+                             f"units: inputs are SI (K, Pa, m³/kg, J/kg).")
+        if name[:1] == "P" and name[1:] in sids and x < 1000.0:
+            alt = f"{x:g} bar or {x:g} kPa" if x < 50.0 else f"{x:g} kPa"
+            warnings.warn(f"{name} = {x:g} Pa: did you mean {alt}? thermo_cycles works in SI "
+                          f"(write {name}={x:g}*kPa or {x:g}*bar with thermo_cycles.units).",
+                          InputPlausibilityWarning, stacklevel=2)
+        if name[:1] == "T" and name[1:] in sids and x < 100.0:
+            warnings.warn(f"{name} = {x:g} K: did you mean {x:g} °C ({x + 273.15:g} K)? thermo_cycles "
+                          f"works in SI (write {name}=degC({x:g}) with thermo_cycles.units).",
+                          InputPlausibilityWarning, stacklevel=2)
+        out[name] = x
+    return out
