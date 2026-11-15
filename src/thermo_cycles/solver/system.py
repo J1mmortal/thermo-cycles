@@ -40,6 +40,7 @@ class EquationSystem:
     aliases: "Mapping[str, str]"
     cycle: CycleDef
     equivalent: "Mapping[str, str]"                       # u_k, h_k -> T_k for an ideal gas
+    fluid: object = None                                  # the fluid, for "closure" blocks (Task 6)
 
     def with_inputs(self, inputs: "Mapping[str, float]") -> "tuple[Relation, ...]":
         """The system's relations plus one ``fixed`` relation per input and per default not overridden.
@@ -238,4 +239,4 @@ def build_system(defn: CycleDef, fluid) -> EquationSystem:
         variables=tuple(variables), relations=tuple(relations),
         var_kind=MappingProxyType(kind), scan_range=MappingProxyType(rng), candidates=candidates,
         defaults=MappingProxyType(defaults), aliases=MappingProxyType(aliases), cycle=defn,
-        equivalent=MappingProxyType(equivalent))
+        equivalent=MappingProxyType(equivalent), fluid=fluid)

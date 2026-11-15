@@ -1,11 +1,9 @@
 """Extra Task 5 tests: registry validation, candidate ranking, scan ranges, generic closure and
-explicit forward solves of the built systems through the Task 4 BLT ordering (no Task 6 solver yet)."""
+forward solves of the built systems (through the Task 6 block solver since Task 6)."""
 
 import math
 
-import numpy as np
 import pytest
-from scipy.optimize import brentq
 
 import thermo_cycles
 from thermo_cycles.errors import UnknownCycleError, UnknownInputError
@@ -13,7 +11,8 @@ from thermo_cycles.fluids import AIR, FluidBase, IdealGas
 from thermo_cycles.model import cycle_def
 from thermo_cycles.model.cycle_def import CycleDef, ParamDef, StepDef, get_cycle, list_cycles, register_cycle
 from thermo_cycles.model.relations import ratio
-from thermo_cycles.solver.structure import blt_blocks, dm_partition
+from thermo_cycles.solver.structure import dm_partition
+from thermo_cycles.solver.numeric import solve_numeric
 from thermo_cycles.solver.system import EquationSystem, build_system
 
 
@@ -30,49 +29,13 @@ def _graph(sys_, inputs):
     return rels, [frozenset(idx[v] for v in r.vars) for r in rels]
 
 
-def _tear2(sys_, rels, eqs, vars_, vals):
-    """Solve a 2x2 block by tearing one variable and scanning the other relation (log grid + brentq)."""
-    names = [sys_.variables[v] for v in vars_]
-    for t in names:
-        o = next(n for n in names if n != t)
-        for i, r1 in enumerate(eqs):
-            r2 = eqs[1 - i]
-            if o not in r1.solvers or t not in r1.vars:
-                continue
-            lo, hi, _ = sys_.scan_range[t]
-
-            def g(tv):
-                trial = {**vals, t: tv}
-                trial[o] = r1.solve_for(o, trial)
-                return r2.residual(*(trial[v] for v in r2.vars))
-
-            grid = np.geomspace(lo, hi, 400)
-            gv = [g(x) for x in grid]
-            roots = [brentq(g, a, b, xtol=1e-12 * a, rtol=1e-14)
-                     for a, b, ga, gb in zip(grid, grid[1:], gv, gv[1:]) if ga * gb < 0]
-            if len(roots) == 1:
-                vals[t] = roots[0]
-                vals[o] = r1.solve_for(o, vals)
-                return
-    raise AssertionError(f"could not tear block {[r.name for r in eqs]}")
-
-
 def _forward(sys_, inputs):
-    """Solve block by block: explicit inverses for 1x1 blocks, a tear for 2x2 blocks.
+    """Solve with the Task 6 block solver (replaces the provisional tear + brentq of Task 5).
 
-    Returns the values, the max scaled residual and the names of the relations in multi-variable blocks."""
-    rels, eq_vars = _graph(sys_, inputs)
-    vals, loops = {}, []
-    for blk in blt_blocks(eq_vars, len(sys_.variables)):
-        if len(blk.eqs) == 1:
-            rel, var = rels[blk.eqs[0]], sys_.variables[blk.vars[0]]
-            vals[var] = rel.solve_for(var, vals)
-        else:
-            assert len(blk.eqs) == 2, [rels[e].name for e in blk.eqs]
-            loops.append(tuple(sorted(rels[e].name for e in blk.eqs)))
-            _tear2(sys_, rels, [rels[e] for e in blk.eqs], blk.vars, vals)
-    res = max(abs(r.residual(*(vals[v] for v in r.vars))) / r.scale for r in rels)
-    return vals, res, loops
+    Returns the values, the max scaled residual and the variables of the blocks that are not 1x1 explicit."""
+    x, rep = solve_numeric(sys_, inputs)
+    loops = [tuple(sorted(b)) for b, m in zip(rep.blocks, rep.methods) if m != "explicit"]
+    return x, rep.max_residual, loops
 
 
 def _brayton(fluid):
@@ -226,7 +189,7 @@ def test_otto_O1_forward_chain_is_explicit():
     s = build_system(get_cycle("otto"), AIR)
     x, res, loops = _forward(s, {"T1": 288.0, "P1": 1e5, "r_c": 10.0, "q_in": 1.8e6})
     assert res < 1e-9
-    assert sorted(loops) == [("eos 2", "s(T,P) 2"), ("eos 4", "s(T,P) 4")]
+    assert sorted(loops) == [("P2", "T2"), ("P4", "T4")]       # eos k + s(T,P) k, k = 2, 4
     exp = {"T2": 723.4, "P2": 2511.9e3, "T3": 3230.4, "P3": 11216.6e3, "T4": 1286, "P4": 445.6e3,
            "q_out": 716.6e3, "w_net": 1083.4e3, "eta_th": 0.602, "mep": 1456.4e3}
     for k, v in exp.items():
