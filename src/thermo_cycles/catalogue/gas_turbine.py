@@ -7,8 +7,9 @@ isentropic end states ``2s`` / ``4s`` / ``5s`` coincide with the real ones).
 
 ``brayton_regen`` follows the numbering of Cengel & Boles 7e SM 9-110: 1 compressor inlet, 2 compressor exit,
 3 regenerator cold-side exit (combustor inlet), 4 turbine inlet, 5 turbine exit, 6 regenerator hot-side exit.
-The two regenerator streams are ``isobaric`` steps with role ``internal``, declared cold side first (2→3, the
-stream being heated) and hot side second (5→6). The validity check of spec 9.7 relies on that order.
+The two regenerator streams are ``isobaric`` steps with role ``internal``, declared as the regenerator pair
+``regenerators=(((2, 3), (5, 6)),)``: cold side 2→3 (the stream being heated), hot side 5→6. The validity check
+of spec 9.7 uses that declaration.
 """
 
 from __future__ import annotations
@@ -84,6 +85,7 @@ BRAYTON_REGEN = CycleDef(
                 "expansion (eta_t), regenerator hot side, constant-pressure heat rejection. The regenerator "
                 "passes the heat h5 - h6 of the turbine exhaust to the compressed air (h3 - h2).",
     references=("Cengel & Boles 7e SM 9-110",),
+    regenerators=(((2, 3), (5, 6)),),
 )
 
 register_cycle(BRAYTON, replace=True)

@@ -48,6 +48,17 @@ class ParamDef:
 
 @dataclass(frozen=True)
 class CycleDef:
+    """A cycle definition (spec 8.1).
+
+    ``regenerators`` declares the regenerator stream pairs: one entry ``((a_c, b_c), (a_h, b_h))`` per
+    regenerator, the cold side first (the step a_c -> b_c whose stream the regenerator heats), then the hot side
+    (a_h -> b_h, the stream it cools). Steps are named by their state numbers, as in every message ("2→3"),
+    not by position: a pair stays right when steps are added or the loop is renumbered, and a typo is caught
+    because (a, b) must be a step of the cycle. Every step with role ``internal`` must be in exactly one pair,
+    and pair members must be internal steps (``validate_cycle``). Example, ``brayton_regen``:
+    ``regenerators=(((2, 3), (5, 6)),)``. The spec 9.7 regenerator rule uses these sides, never the step order.
+    """
+
     name: str
     title: str
     aliases: "tuple[str, ...]"
@@ -63,6 +74,7 @@ class CycleDef:
     typical_inputs: "tuple[tuple[str, ...], ...]" = ()
     description: str = ""
     references: "tuple[str, ...]" = ()
+    regenerators: "tuple[tuple[tuple[int, int], tuple[int, int]], ...]" = ()
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -149,6 +161,8 @@ def validate_cycle(defn: CycleDef) -> None:
         _fail(nm, "a flow cycle needs a 'compression' and an 'expansion' step (for w_compression, "
                   "w_expansion and bwr)")
 
+    _validate_regenerators(defn, steps)
+
     # piston volumes for the MEP
     if defn.system == "closed":
         for label, k in (("v_max_state", defn.v_max_state), ("v_min_state", defn.v_min_state)):
@@ -222,6 +236,45 @@ def validate_cycle(defn: CycleDef) -> None:
         bad = [s for s in ti if s not in variables]
         if bad:
             _fail(nm, f"typical_inputs {ti} name unknown variables {bad}")
+
+
+def _validate_regenerators(defn: CycleDef, steps: "tuple[StepDef, ...]") -> None:
+    """Spec 8.1 ``regenerators``: well-formed ((a_c, b_c), (a_h, b_h)) pairs of distinct internal steps, and every
+    internal step in exactly one pair."""
+    nm = defn.name
+    regens = defn.regenerators
+    form = "((a_c, b_c), (a_h, b_h)): the cold-side step, then the hot-side step"
+    if not isinstance(regens, tuple):
+        _fail(nm, f"regenerators must be a tuple of pairs {form}, got {type(regens).__name__} {regens!r}")
+    by_ab = {(st.a, st.b): st for st in steps}
+    seen: "dict[tuple[int, int], int]" = {}
+    for i, pair in enumerate(regens):
+        where = f"regenerators[{i}] = {pair!r}"
+        if not (isinstance(pair, tuple) and len(pair) == 2
+                and all(isinstance(side, tuple) and len(side) == 2 for side in pair)):
+            _fail(nm, f"{where} must be a pair of steps {form}")
+        if not all(isinstance(k, int) and not isinstance(k, bool) for side in pair for k in side):
+            _fail(nm, f"{where}: state numbers must be integers")
+        cold, hot = pair
+        if cold == hot:
+            _fail(nm, f"{where}: cold and hot side are the same step {cold[0]}→{cold[1]}")
+        for side, (a, b) in (("cold", cold), ("hot", hot)):
+            st = by_ab.get((a, b))
+            if st is None:
+                _fail(nm, f"{where}: {side} side step {a}→{b} is not a step of the cycle "
+                          f"(steps: {', '.join(f'{s.a}→{s.b}' for s in steps)})")
+            if st.role != "internal":
+                _fail(nm, f"{where}: {side} side step {a}→{b} has role {st.role!r}, not 'internal'")
+            if (a, b) in seen:
+                _fail(nm, f"step {a}→{b} is in more than one regenerator pair (regenerators[{seen[(a, b)]}] and "
+                          f"regenerators[{i}])")
+            seen[(a, b)] = i
+    for st in steps:
+        if st.role == "internal" and (st.a, st.b) not in seen:
+            others = [f"({s.a}, {s.b})" for s in steps if s.role == "internal" and s is not st]
+            _fail(nm, f"internal step {st.a}→{st.b} is not in any declared regenerator pair. Declare it with "
+                      f"regenerators=(((a_c, b_c), (a_h, b_h)),), cold side (the heated stream) first"
+                      + (f"; other internal steps: {', '.join(others)}" if others else "") + ".")
 
 
 # ---------------------------------------------------------------------------------------------------------
