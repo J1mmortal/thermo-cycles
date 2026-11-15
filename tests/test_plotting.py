@@ -8,10 +8,8 @@ import pytest
 matplotlib = pytest.importorskip("matplotlib")
 matplotlib.use("Agg")
 
-from thermo_cycles import Cycle, IdealGas, plot_cycles, register_cycle   # noqa: E402
+from thermo_cycles import Cycle, IdealGas, plot_cycles   # noqa: E402
 from thermo_cycles.errors import InputError, MissingDependencyError      # noqa: E402
-from thermo_cycles.model.cycle_def import CycleDef, ParamDef, StepDef    # noqa: E402
-from thermo_cycles.model.relations import ratio                          # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -30,17 +28,8 @@ def _gid(ax, prefix):
 
 
 def _brayton():
-    """Simple Brayton with isentropic efficiencies. The catalogue Brayton is plan Task 10 and is not on this
-    base commit, so the plot tests register an equivalent cycle (same steps as the spec section 8.2 Brayton)."""
-    register_cycle(CycleDef(
-        name="test_plot_brayton", title="Brayton (plot test)", aliases=(), system="flow", states=(1, 2, 3, 4),
-        steps=(StepDef("adiabatic", 1, 2, "compression", "eta_c"), StepDef("isobaric", 2, 3, "heat_in"),
-               StepDef("adiabatic", 3, 4, "expansion", "eta_t"), StepDef("isobaric", 4, 1, "heat_out")),
-        params=(ParamDef("r_p", "P2/P1", ratio("r_p", "P2", "P1")),
-                ParamDef("eta_c", "compressor isentropic efficiency", None, default=1.0, bounds=(0.01, 1.0)),
-                ParamDef("eta_t", "turbine isentropic efficiency", None, default=1.0, bounds=(0.01, 1.0)))),
-        replace=True)
-    return Cycle("test_plot_brayton", T1=300, P1=1e5, r_p=10, T3=1400, eta_c=0.85, eta_t=0.9)
+    """The plan's literal Task 13 cycle: the catalogue Brayton with eta_c = 0.85, eta_t = 0.9."""
+    return Cycle("brayton", T1=300, P1=1e5, r_p=10, T3=1400, eta_c=0.85, eta_t=0.9)
 
 
 def test_Ts_true_curves():

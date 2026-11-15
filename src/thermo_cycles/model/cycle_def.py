@@ -310,6 +310,12 @@ def register_cycle(defn: CycleDef, *, replace: bool = False) -> None:
     _REGISTRY[defn.name] = defn
 
 
+def _unregister(name: str) -> None:
+    """Remove a cycle from the registry (private; tests use it so custom cycles do not leak into
+    ``list_cycles()``). Silent when ``name`` is not registered."""
+    _REGISTRY.pop(name, None)
+
+
 def list_cycles() -> "list[str]":
     """Registered cycle names, sorted."""
     return sorted(_REGISTRY)

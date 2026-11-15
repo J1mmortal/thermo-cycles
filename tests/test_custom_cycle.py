@@ -1,8 +1,14 @@
 # tests/test_custom_cycle.py  (spec §15.1 C1, Cengel 7e SM 9-24)
 import pytest
 from thermo_cycles import Cycle, IdealGas, register_cycle
-from thermo_cycles.model.cycle_def import CycleDef, StepDef, ParamDef
+from thermo_cycles.model.cycle_def import CycleDef, StepDef, ParamDef, _unregister
 from thermo_cycles.model.relations import ratio
+
+@pytest.fixture(autouse=True)
+def _drop_custom_cycle():
+    yield
+    _unregister("test_9_24")        # plan Task 14: a custom cycle must not leak into list_cycles()
+
 
 def test_C1_three_step_cycle():
     register_cycle(CycleDef(

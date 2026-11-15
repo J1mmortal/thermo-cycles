@@ -209,3 +209,17 @@ def test_evaluate_limits_directly():
     assert not r.ok and r["T_max"].margin == pytest.approx(-100)
     assert r["T_max"].margin_pct == pytest.approx(-100 / 1700 * 100)
     assert evaluate_limits(c.cycle_state, {}).second_law.eta_ii == pytest.approx(c.results.eta_ii)
+
+
+def test_hidden_state_extreme_brayton_2s():
+    # Brayton with eta_c < 1: the isentropic end state 2s has the smallest specific volume of the cycle
+    # (same P as state 2, lower T), so a v_min limit is reached at the hidden state "2s" (T2 report, Task 11).
+    from thermo_cycles import Cycle
+    c = Cycle("brayton", T1=300, P1=1e5, r_p=10, T3=1400, eta_c=0.85, eta_t=0.9, limits={"v_min": 0.1})
+    m = c.margins["v_min"]
+    assert m.where == "2s" and m.kind == "min"
+    R, g = c.fluid.R, c.fluid.gamma
+    T2s = 300 * 10 ** ((g - 1) / g)                            # isentropic compression, hand calculation
+    assert m.value == pytest.approx(R * T2s / 10e5, rel=1e-9)  # v = R T / P at P2 = 10 bar
+    assert m.value == pytest.approx(c.hidden_states["2s"].v) and m.value < c.states[2].v
+    assert m.ok == (m.value >= 0.1)

@@ -15,7 +15,7 @@ from .margins import check_limit_value, describe_violations, evaluate_limits, pa
 from .model.cycle_def import get_cycle
 from .solver import CHECK_MODES, analyse, resolve_inputs, resolve_name, solve_cycle, system_for
 
-__all__ = ["Cycle", "requirements"]
+__all__ = ["Cycle", "requirements", "describe"]
 
 VIOLATION_MODES = ("warn", "raise", "ignore")
 
@@ -222,3 +222,37 @@ def requirements(name: str, *, fluid=None, **inputs: float):
     given = resolve_inputs(system, inputs)
     return analyse(system, list(given))
 
+
+def describe(name: str) -> str:
+    """Text description of a catalogue cycle (spec section 4): title, numbered steps, parameters with
+    descriptions and defaults, degrees of freedom, typical input sets and references.
+
+    ``name`` is looked up as for ``Cycle`` (case-insensitive, aliases). Raises ``UnknownCycleError`` otherwise.
+    """
+    defn = get_cycle(name)
+    needs = analyse(system_for(defn, AIR), []).missing
+    out = [defn.title, "=" * len(defn.title)]
+    if defn.description:
+        out.append(defn.description)
+    out += ["", f"Name: {defn.name}   System: {defn.system}   States: {', '.join(str(s) for s in defn.states)}",
+            "", "Steps:"]
+    out += [f"  {st.a}→{st.b} {st.kind} ({st.role})"
+            + (f", efficiency {st.efficiency}" if st.efficiency else "") for st in defn.steps]
+    out += ["", "Parameters:"]
+    if defn.params:
+        for p in defn.params:
+            extra = [f"default {p.default:g}"] if p.default is not None else []
+            out.append(f"  {p.name}: {p.description}" + (f" [{', '.join(extra)}]" if extra else ""))
+    else:
+        out.append("  (none)")
+    defaulted = [p for p in defn.params if p.default is not None]
+    dof = f"{defn.name} needs {needs} inputs"
+    if defaulted:
+        dof += (f" (plus {', '.join(p.name for p in defaulted)}, "
+                f"which default to {', '.join(f'{p.default:g}' for p in defaulted)})")
+    out += ["", f"Degrees of freedom: {dof}."]
+    if defn.typical_inputs:
+        out += ["", "Typical input sets:"] + [f"  {', '.join(t)}" for t in defn.typical_inputs]
+    if defn.references:
+        out += ["", "References:"] + [f"  {r}" for r in defn.references]
+    return "\n".join(out)

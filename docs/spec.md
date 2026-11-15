@@ -12,11 +12,11 @@ results, margins to your limits, and T-s / P-v plots with the real process curve
 
 ```python
 from thermo_cycles import Cycle
-c = Cycle("atkinson", T1=298, P1=1e5, r_c=10, T3=2400, limits={"T_max": 2700, "P_max": 80e5})
+c = Cycle("atkinson", T1=298, P1=1e5, r_c=10, T3=2400, limits={"T_max": 2700, "P_max": 90e5})
 c.states[3].T          # 2400.0
 c.results.eta_th       # thermal efficiency
 c.params["r_e"]        # expansion ratio that follows from the inputs
-c.margins["P_max"]     # Margin(limit=8e6, value=..., margin=..., margin_pct=..., ok=True)
+c.margins["P_max"]     # Margin(limit=9e6, value=8.054e6, margin=..., margin_pct=..., ok=True)
 c.plot("Ts")
 ```
 
@@ -141,7 +141,7 @@ print(describe("atkinson"))         # steps, parameters, degrees of freedom, typ
 c = Cycle("otto", T1=288, P1=100*kPa, r_c=10, q_in=1800e3)
 c.states[3].T, c.states[3].P        # 3232.1 K, 1.1223e7 Pa
 c.steps[1]                          # StepResult(a=2, b=3, kind='isochoric', role='heat_in', q=1.8e6, w=0.0, ...)
-c.results.eta_th, c.results.mep     # 0.6019, 1.457e6
+c.results.eta_th, c.results.mep     # 0.6019, 1.456e6
 c.results.eta_carnot, c.results.eta_ii
 c.value("P4")                       # any solved variable by name
 c.summary()                         # text table of states, steps, results, margins
@@ -155,7 +155,7 @@ requirements("atkinson", T1=298, P1=1e5, r_c=10)
 # Requirements(status='under', missing=1, add_one_of=('T3','P3','q_in','r_e','T4','v4','q_out','w_net','eta_th','mep'), ...)
 Cycle("atkinson", T1=298, P1=1e5, r_c=10)
 # UnderdeterminedError: atkinson needs 1 more input.
-#   Given: T1, P1, r_c  (these already fix: T2, P2, v1, v2, v3, P4)
+#   Given: T1, P1, r_c  (these already fix: v1, T2, P2, v2, v3, P4)
 #   Add one of: T3, P3, q_in, r_e, T4, v4, q_out, w_net, eta_th, mep
 
 # other fluid (any two of R, cp, cv, gamma)
@@ -309,7 +309,9 @@ AIR = IdealGas(R=287.0, gamma=1.4, name="air (cold-air standard)")    # cp = 100
 
 `CoolPropFluid(name)` will implement `state()` through `PropsSI`, with `props` including `x`. `relations()`
 returns `None`, so the solver uses the generic closure. `saturation_curve()` is an optional extra method that the
-plotting code will use when present. A probe against the installed CoolProp 6.6.0 (water, 600 K, 5 MPa) showed:
+plotting code will use when present. It returns a mapping of equal-length arrays `T` [K], `P` [Pa], `s_f`, `s_g` [J/(kg·K)] and
+`v_f`, `v_g` [m³/kg] (saturated liquid and vapour along the dome, in the same order as `T`). This format is the one `plotting.py` reads;
+it was assumed by the plotting task, not given by this spec before. A probe against the installed CoolProp 6.6.0 (water, 600 K, 5 MPa) showed:
 - These pairs work: (T,P), (P,h), (P,s), (ρ,T), (ρ,P), (ρ,u), (ρ,s), (ρ,h), (h,s), (T,s), (P,u).
 - These are rejected: (T,h), (T,u), (s,u). (T,Q) and (P,Q) work for saturation.
 
@@ -411,10 +413,24 @@ class CycleDef: name; title; aliases; system: Literal["closed","flow"]; states: 
                 kind: Literal["power"] = "power"; v_max_state: int | None = None; v_min_state: int | None = None
                 suggest: tuple[str, ...] = (); typical_inputs: tuple[tuple[str, ...], ...] = ()
                 description: str = ""; references: tuple[str, ...] = ()
+                regenerators: tuple[tuple[tuple[int, int], tuple[int, int]], ...] = ()   # ((a_c, b_c), (a_h, b_h))
 ```
 
-Validation in `register_cycle`: the steps form one closed loop through all states in order; every state appears
-exactly once as a step start; parameter names don't clash with property or result names; step kinds exist.
+`regenerators` declares the regenerator stream pairs, one entry per regenerator: `((a_c, b_c), (a_h, b_h))`. The
+cold-side step comes first (the stream the regenerator heats), then the hot-side step (the stream it cools). Steps
+are named by their state numbers, as in every message ("2→3"), not by position. A pair therefore cannot be off by
+one, it stays right when a loop is renumbered or extended, and a typo is caught because (a, b) must be a step.
+Example: `brayton_regen` has `regenerators=(((2, 3), (5, 6)),)`. The §9.7 regenerator rule uses these sides,
+never the step order.
+
+Validation in `register_cycle` (and `build_system`):
+- the steps form one closed loop through all states in order, and every state appears exactly once as a step
+  start;
+- parameter names don't clash with property or result names;
+- step kinds exist;
+- every `regenerators` entry is a pair of two different steps of the cycle, both with role `internal`;
+- every `internal` step is in exactly one pair. An internal step in no pair is a definition error, not a silent
+  pass.
 
 Degrees of freedom of a closed cycle with N states and N single-relation steps: 2N − N = N. Each non-ideal
 adiabatic step adds a hidden state (+2) and two more relations (−2), so it is neutral apart from its efficiency
@@ -429,7 +445,7 @@ parameter, which has a default. Each `extra_relation` takes away one.
 | `dual` | closed | 1→2 isentropic; 2→3 isochoric heat_in; 3→4 isobaric heat_in; 4→5 isentropic; 5→1 isochoric heat_out | r_c = v1/v2; alpha = P3/P2; cutoff = v4/v3 | 5 | T1,P1,r_c,alpha,cutoff; or T1,P1,r_c,P3,T4; or ...,q_in |
 | `atkinson` | closed | 1→2 isentropic; 2→3 isochoric heat_in; 3→4 isentropic exp **to P4 = P1**; 4→1 **isobaric** heat_out | r_c = v1/v2; r_e = v4/v3 | 4 | T1,P1,r_c + one of T3, q_in, P3, r_e |
 | `brayton` | flow | 1→2 adiabatic comp (eta_c); 2→3 isobaric heat_in; 3→4 adiabatic exp (eta_t); 4→1 isobaric heat_out | r_p = P2/P1; eta_c = 1, eta_t = 1 (defaults) | 4 (+2 defaulted) | T1,P1,r_p,T3 |
-| `brayton_regen` | flow | 1→2 adiabatic comp (eta_c); 2→3 isobaric internal (regen cold side); 3→4 isobaric heat_in; 4→5 adiabatic exp (eta_t); 5→6 isobaric internal (regen hot side); 6→1 isobaric heat_out | r_p = P2/P1; eta_c, eta_t (defaults 1); eps = (h3−h2)/(h5−h2); dT_regen = T5−T3; extra: h3−h2 = h5−h6 | 5 (+2 defaulted) | T1,P1,r_p,T4,eps (or dT_regen) |
+| `brayton_regen` | flow | 1→2 adiabatic comp (eta_c); 2→3 isobaric internal (regen cold side); 3→4 isobaric heat_in; 4→5 adiabatic exp (eta_t); 5→6 isobaric internal (regen hot side); 6→1 isobaric heat_out | r_p = P2/P1; eta_c, eta_t (defaults 1); eps = (h3−h2)/(h5−h2); dT_regen = T5−T3; extra: h3−h2 = h5−h6; regenerators = ((2,3), (5,6)) | 5 (+2 defaulted) | T1,P1,r_p,T4,eps (or dT_regen) |
 
 Notes:
 - Dual numbering is 1..5. Cengel's state x is our 3, his 3 is our 4 and his 4 is our 5. The reference tests map
@@ -437,6 +453,7 @@ Notes:
 - Atkinson MEP uses v_max = v4 (not v1), because r_e > r_c.
 - The brayton_regen numbering equals Cengel 9-110's, including the hidden states 2s and 5s. `eps` and `dT_regen`
   are both defined parameters, so the user gives either one.
+- `brayton_regen` declares its regenerator as `regenerators=(((2, 3), (5, 6)),)`: cold side 2→3, hot side 5→6.
 - Validity bounds: cutoff ≥ 1, alpha ≥ 1, r_c > 1, r_e > 1, r_p > 1, 0 < eta_c, eta_t ≤ 1, 0 ≤ eps ≤ 1. They
   feed the post-solve checks (§9.7) and the scan ranges (§9.5).
 
@@ -506,7 +523,15 @@ Variables and relations form a bipartite graph. A relation is linked to the vari
 3. Status: `ok` (perfect matching), `under`, `over`, or both. Over-determination is reported first because it is
    definite.
 
-This is exact for structure. It also catches ideal-gas degeneracy: T1 and u1 given together over-determine
+**Numeric rank refinement (as built).** Structure alone is not physically sufficient: of the structurally "ok"
+4-input Otto sets, 19 % are numerically singular (for example `eta_th` given with `r_c`: the Otto efficiency
+depends on r_c alone, so the solve returns q_in ≈ 0). So `analyse` takes status, `missing`, `determined`,
+`add_one_of` and `drop_one_of` from the generic numeric rank of the relation Jacobian at reference solutions.
+The structural matching is the fallback (when no reference solution can be built) and the upper bound.
+`Requirements.method` says which layer answered (`"numeric"` or `"structural"`). The structure-only behaviour
+remains available as `analyse(..., numeric=False)`.
+
+The structural analysis is exact for structure. It also catches ideal-gas degeneracy: T1 and u1 given together over-determine
 state 1, because u1 = cv·T1 is one relation linking two fixed variables. Numerical singularity on a structurally
 fine system is handled at solve time (§9.5).
 
@@ -554,8 +579,9 @@ rather than options.
 1. **BLT ordering.** Take the perfect matching, orient each relation towards its matched variable, and find the
    strongly connected components (Tarjan). This gives blocks in solve order. Most blocks are 1×1.
 2. **1×1 block with an explicit inverse**: closed form. With the ideal gas, every relation in the catalogue has
-   inverses, so a forward problem such as Otto(T1, P1, r_c, q_in) solves entirely in closed form, just as the old
-   hand-written code did.
+   inverses, but not every forward problem is all 1×1 blocks. Otto(T1, P1, r_c, q_in) has torn (s, v) 2×2 blocks
+   at states 2 and 4 (the isentropic step ties s and v of both end states), which step 3 solves by tearing. The
+   solver therefore reproduces the old hand-written forward chain, but not with 1×1 blocks alone.
 3. **Tearing for blocks larger than 1×1 (algebraic loops).** Try each block variable as the tear t. Check whether
    the other block relations can then be evaluated one after another with explicit inverses, leaving one relation
    as the residual g(t). If so, scan g over the variable's physical range: 400 log-spaced points for positive
@@ -571,7 +597,13 @@ rather than options.
    residuals. Positive variables are solved in log space. It starts from up to 8 seeds (typical values
    T 300/1500 K, P 1e5/1e7 Pa, ...). Distinct converged solutions are handled as in step 3. If none converges, it
    raises `ConvergenceError` with the block's variables, relations and best residual norm.
-5. **Accuracy target:** every relation's scaled residual < 1e-9 after the solve. This is asserted in tests through
+5. **Solver guard (`solver/numeric.py`).** A solve gives up with `ConvergenceError` (suggesting `analyse`) when
+   the relation evaluations over the whole solve exceed `MAX_WORK` (2e6), when a torn residual is flat (its
+   rounding noise would give spurious roots), or when no candidate solution has a full-rank Jacobian (the inputs
+   look degenerate). A regular solve of every catalogue cycle reports work far below the budget
+   (`test_regular_solve_reports_work_well_below_budget`). If a new cycle comes near the budget, raise
+   `MAX_WORK`; never weaken the degenerate checks.
+6. **Accuracy target:** every relation's scaled residual < 1e-9 after the solve. This is asserted in tests through
    `CycleState.report.max_residual`.
 
 For a CoolProp fluid the per-state generic closure is a 4×4 block once two props are known. The block is solved by
@@ -581,7 +613,8 @@ calling `fluid.state(pair)`. The block solver detects this "closure" pattern bef
 
 By default, over-determined inputs raise `OverdeterminedError`, which is a definite and clear failure. With
 `allow_redundant=True`:
-1. Drop inputs from `drop_one_of` in reverse ranking order until the status is `ok`.
+1. Drop inputs from `drop_one_of` in reverse given order until the status is `ok` (the input given last is
+   checked against the others).
 2. Solve.
 3. Check each dropped input against the solution: |given − implied| ≤ 1e-6·max(|given|, 1).
 4. Any mismatch raises `InconsistentInputError`, e.g. "r_e = 14 given, but T1, P1, r_c, T3 imply r_e = 15.88".
@@ -590,13 +623,31 @@ By default, over-determined inputs raise `OverdeterminedError`, which is a defin
 ### 9.7 Physical validity checks (after the solve)
 
 `check="raise"` (default) raises `InvalidCycleError` listing every problem. `"warn"` emits `CycleValidityWarning`
-and `"off"` skips the checks.
+and `"off"` skips the checks, except the defined-results rule below, which raises in every mode. With
+`check="off"` the validity problems still filter the candidate roots of an ambiguous solve (§9.5); `check` only
+controls the final report.
 - All T, P, v > 0 (main and hidden states).
 - Role `compression`: P_b > P_a and w < 0. Role `expansion`: P_b < P_a and w > 0.
 - Role `heat_in`: q ≥ −1e-9·q_in, so zero is allowed (Dual with alpha = 1 or cutoff = 1 is a valid limiting
-  case), and q_in > 0 overall. Role `heat_out`: q ≤ 1e-9·q_in.
+  case), and q_in > 0 overall. Role `heat_out`: q ≤ 1e-9·q_in. With zero heat input (next bullet) the scale of
+  both tolerances is the largest step |q| or |w|, not q_in.
+- Defined results. A divisor counts as zero within 1e-9 of the cycle's scale. That scale is the largest |q| or
+  |w| of any step, or the larger of the two volumes for the MEP. The rule has three cases:
+  - Zero heat input: |q_in| ≤ 1e-9·scale, so eta_th = w_net/q_in is undefined. The message names each heat_in
+    step with its q and the temperatures that coincide (e.g. "T3 = T2 = 689.22 K"), and gives the fix: "r_e must
+    exceed r_c", "cutoff = 1 is the degenerate limit", "raise T3 / q_in".
+  - Zero swept volume (closed cycles): v_max_state = v_min_state, so the MEP is undefined (e.g. r_c = 1).
+  - Zero expansion work (flow cycles): |w_expansion| ≤ 1e-9·scale, so bwr is undefined (e.g. r_p = 1).
+
+  These raise `InvalidCycleError` with every `check` mode, `"off"` included. An undefined result is never
+  returned. A divide-by-zero in one of these quotients during the solve gives the same error, not
+  `NoSolutionError`.
 - Parameters inside their `bounds`.
-- Regenerator (brayton_regen): T5 ≥ T3 and T6 ≥ T2 (heat flows hot to cold), so eps ∈ [0, 1] and T5 > T2.
+- Regenerator, for each pair declared in `regenerators` (cold side a_c→b_c, hot side a_h→b_h): T(a_h) ≥ T(b_c),
+  T(b_h) ≥ T(a_c) and T(a_h) ≥ T(a_c), each with a relative tolerance of 1e-9. For brayton_regen these are
+  T5 ≥ T3, T6 ≥ T2 and T5 ≥ T2. The third condition is needed because at eps = 1 the first two hold with
+  equality even when T5 < T2. The internal steps' q must sum to zero within 1e-6 × max(q_in, the largest
+  internal |q|).
 - Message example: "step 2→3 (isochoric, heat_in) has q = −120.4 kJ/kg < 0: T3 = 600 K is below T2 = 689.2 K.
   Raise T3 / q_in or lower r_c."
 
@@ -607,6 +658,9 @@ Before analysis:
   are accepted and converted with `float()`.
 - Variables of positive kind must be > 0.
 - Names are resolved as in §3.
+- Range: an input outside the solvable range is an `InputError`, not a warning (T outside 1..1e5 K, P outside
+  1..1e10 Pa, v outside 1e-6..1e4 m³/kg, eta_th > 1, r_c < 1, ...: the scan ranges of §9.5 and the parameter
+  `bounds`). The message names the input and its range.
 - Plausibility: given P < 1 000 Pa or T < 100 K → `InputPlausibilityWarning` ("P1 = 100 Pa: did you mean
   100 kPa? thermo_cycles works in SI").
 
@@ -625,6 +679,8 @@ All results are computed from the solved values:
 - `bwr` = −w_compression / w_expansion for flow cycles, otherwise None.
 - `eta_carnot` = 1 − T_min/T_max over main and hidden states. For every v0.1 step kind T is monotonic along the
   path, so state extremes are path extremes. A unit test asserts this on sampled paths.
+- If q_in, v_max − v_min or w_expansion is zero (§9.7, defined results), the solve raises `InvalidCycleError`.
+  No eta_th, mep or bwr is reported.
 - `eta_ii` = eta_th / eta_carnot.
 - `params`: all catalogue parameters, e.g. `r_e` for Atkinson and `cutoff` for Diesel, whether given or derived.
 - `StepResult` per step, with q, w and Δs.
