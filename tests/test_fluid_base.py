@@ -32,7 +32,7 @@ def test_fallback_without_bracket_raises():
 
 
 def test_fluidbase_relations_is_none():
-    assert FluidBase().relations("1") is None and AIR.relations("1") is None
+    assert FluidBase().relations("1") is None  # IdealGas overrides it since Task 3
 
 
 @pytest.mark.parametrize("kw", [dict(T=300), dict(T=300, P=1e5, v=1), dict(T=300, x=1), dict(T=300, t=310),

@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from scipy.optimize import brentq
 
 from ..errors import DegenerateStateError, FluidError, UnsupportedPairError
+from ..model.relations import Relation
 from ..state import PROPS
-
-if TYPE_CHECKING:  # Relation arrives in Task 3
-    from ..relations import Relation
 
 
 @runtime_checkable

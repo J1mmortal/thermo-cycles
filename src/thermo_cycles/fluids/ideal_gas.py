@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from ..errors import FluidError
+from ..model.relations import Relation
 from ..state import PROPS
 from .base import FluidBase
 
@@ -82,6 +83,25 @@ class IdealGas(FluidBase):
 
     def __repr__(self):
         return f"IdealGas(R={self.R:g}, gamma={self.gamma:g}, name={self.name!r})"
+
+    # -- sparse relations with explicit inverses (spec 6.2) ----------------
+    def relations(self, sid):
+        R, cp, cv, Tr, Pr = self.R, self.cp, self.cv, self.T_ref, self.P_ref
+        T, P, v, u, h, s = (f"{p}{sid}" for p in PROPS)
+        return [
+            Relation(f"eos {sid}", (P, v, T), lambda P_, v_, T_: P_ * v_ - R * T_,
+                     {P: lambda **k: R * k[T] / k[v], v: lambda **k: R * k[T] / k[P],
+                      T: lambda **k: k[P] * k[v] / R}, 1e5),
+            Relation(f"u(T) {sid}", (u, T), lambda u_, T_: u_ - cv * T_,
+                     {u: lambda **k: cv * k[T], T: lambda **k: k[u] / cv}, 1e5),
+            Relation(f"h(T) {sid}", (h, T), lambda h_, T_: h_ - cp * T_,
+                     {h: lambda **k: cp * k[T], T: lambda **k: k[h] / cp}, 1e5),
+            Relation(f"s(T,P) {sid}", (s, T, P),
+                     lambda s_, T_, P_: s_ - (cp * math.log(T_ / Tr) - R * math.log(P_ / Pr)),
+                     {s: lambda **k: cp * math.log(k[T] / Tr) - R * math.log(k[P] / Pr),
+                      T: lambda **k: self._T_from_P_s(k[P], k[s]),
+                      P: lambda **k: self._P_from_T_s(k[T], k[s])}, 100.0),
+        ]
 
     # -- closed forms for all 12 independent pairs -------------------------
     def _T_from_P_s(self, P, s):
