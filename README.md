@@ -10,6 +10,14 @@ dependencies are numpy and scipy. matplotlib is optional and only needed for plo
 
 ## Install
 
+One line, from the main branch on GitHub (the `[plot]` extra adds matplotlib):
+
+```
+pip install "thermo-cycles[plot] @ git+https://github.com/J1mmortal/thermo-cycles"
+```
+
+For development (tests included):
+
 ```
 git clone https://github.com/J1mmortal/thermo-cycles
 cd thermo-cycles
@@ -53,8 +61,17 @@ res.x, res.value, res.active
 c.plot("Ts"); c.plot("Pv", logscale_P=True); tc.plot_cycles([c, c2], "Ts")
 ```
 
-Runnable versions are in `examples/quickstart.py` and `examples/old_modes_migrated.py`. Design notes and the full
-contract are in `docs/spec.md`.
+Runnable versions are in `examples/quickstart.py`, `examples/brayton.py` (gas turbines) and
+`examples/old_modes_migrated.py`. Design notes and the full contract are in `docs/spec.md`.
+
+## Which cycle?
+
+- Spark-ignition (petrol) engine -> `otto`; compression-ignition (diesel) engine -> `diesel`, or `dual` for
+  part constant-volume, part constant-pressure combustion; over-expanded engine -> `atkinson`.
+- Gas turbine -> `brayton` / `brayton_regen` (with a regenerator). Mind the numbering: the turbine inlet is
+  **T3** in `brayton` but **T4** in `brayton_regen` (there T3 is the regenerator cold-side outlet).
+  `describe(name)` lists the role of every state; `examples/brayton.py` shows both cycles, `optimise` over
+  r_p for maximum w_net and maximum eta_th, and the regenerator cut-off pressure ratio.
 
 ## Catalogue (v0.1)
 

@@ -30,7 +30,17 @@ class Cycle:
     """A solved thermodynamic cycle: pick it by name, give any well-posed set of inputs (SI, per unit mass).
 
     Solves eagerly and is immutable afterwards; errors are raised at construction. ``with_inputs`` returns a
-    new cycle. See spec section 4 for the arguments.
+    new cycle.
+
+    ``thermo_cycles.list_cycles()`` gives the names; ``print(thermo_cycles.describe(name))`` shows a cycle's
+    steps, the role of every state (e.g. the turbine inlet is T3 in "brayton" but T4 in "brayton_regen"), its
+    parameters and typical input sets. The README ("Quick start", "Which cycle?") has worked examples.
+
+    Arguments: ``name``; inputs as keywords (state properties such as ``T1``, ``P1``, parameters such as ``r_c``,
+    ``r_p``, ``eta_c``, or results such as ``q_in``), SI per unit mass; ``fluid`` (default AIR); ``limits``
+    (e.g. ``{"T_max": 2500}``); ``allow_redundant``; ``check`` ("raise", "warn", "off") for the validity
+    checks; ``on_violation`` ("warn", "raise", "ignore") for limits; ``plausibility`` ("raise", "warn", "off")
+    for given temperatures below 100 K and pressures below 1000 Pa (usually deg C, kPa or bar).
     """
 
     __slots__ = ("_cs", "_limits", "_margins", "_allow_redundant", "_check", "_on_violation", "_plausibility")
