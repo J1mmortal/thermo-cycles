@@ -14,6 +14,22 @@ The system plus its inputs is ordered into blocks with :func:`blt_blocks`. Each 
 A block with several roots branches: every candidate is completed through the remaining blocks. With
 ``validate`` given, candidates with problems are dropped; if more than one remains,
 :class:`AmbiguousSolutionError` names the user-facing variable that tells them apart.
+
+Guard against degenerate inputs (fail loudly, never hang; plan Task 8, T0079 open issue 7). An input set can be
+structurally well-determined but numerically singular (Otto: q_in, q_out and eta_th are tied by
+eta_th = 1 - q_out/q_in). A torn residual is then flat, its rounding noise gives dozens of spurious "roots", every
+branch is completed, and every failing branch ran the no-solution reach sweep: minutes to hours. Two checks:
+
+- a work budget: relation evaluations are counted over the whole solve (``MAX_WORK``). The optional reach sweep
+  of a no-solution message has its own smaller budget (``REACH_WORK``) and runs at most once per solve; when it
+  runs out, the message falls back to the plain no-root detail. Exceeding ``MAX_WORK`` raises
+  :class:`ConvergenceError` saying the inputs look degenerate;
+- a regularity check: every complete candidate solution must have a full-rank Jacobian (base relations plus one
+  unit row per input and default; same scaling and tolerance as ``advice``). Singular candidates are dropped; if
+  none is regular, :class:`ConvergenceError` says the inputs look degenerate.
+
+Both messages point to ``thermo_cycles.requirements`` and ``solver.advice.analyse``, which name the conflicting
+inputs. ``solve_cycle`` calls ``analyse`` first, so in normal use these guards only fire on direct calls.
 """
 
 from __future__ import annotations
@@ -30,6 +46,7 @@ from ..errors import (AmbiguousSolutionError, ConvergenceError, FluidError, NoSo
                       UnsupportedPairError)
 from ..model.relations import default_scale
 from ..state import PROPS
+from .advice import RANK_RTOL, _fd_jacobian, _numeric_rank
 from .structure import blt_blocks, dm_partition
 
 __all__ = ["SolveReport", "solve_numeric"]
@@ -43,6 +60,9 @@ NEWTON_TOL = 1e-10           # scaled residual for a converged Newton solution
 SOLVE_TOL = 1e-6             # final max scaled residual above this is a solver failure
 MAX_SOLUTIONS = 64           # branching limit (candidate full solutions)
 N_SWEEP = 60                 # points of the no-solution reach sweep (message only)
+MAX_WORK = 2_000_000         # relation evaluations per solve before giving up (a few seconds)
+REACH_WORK = 400_000         # evaluations allowed to the optional reach sweep of a no-solution message
+FLAT_TOL = 1e-9              # scaled |g| below this at most scan points: the residual is identically zero
 
 # inputs blamed first in a no-solution message: derived targets before design inputs such as q_in
 _BLAME_ORDER = ("eta_th", "bwr", "w_net", "mep", "q_out", "q_in")
@@ -54,6 +74,39 @@ class SolveReport:
     blocks: "tuple[tuple[str, ...], ...]"
     methods: "tuple[str, ...]"           # "explicit" | "torn" | "newton" | "closure"
     max_residual: float
+    # spec 5.2 "redundant checks": (name, given, implied) per redundant input dropped and checked (solve_cycle)
+    redundant: "tuple[tuple[str, float, float], ...]" = ()
+    work: int = 0                        # relation evaluations spent (solver guard)
+
+
+class _Work:
+    """Shared evaluation counter of one solve (the guard against degenerate inputs)."""
+
+    def __init__(self, limit: int):
+        self.count = 0
+        self.limit = limit
+        self.reach_done = False
+
+    def add(self, n: int) -> None:
+        self.count += n
+        if self.count > self.limit:
+            raise _Budget(self)
+
+
+class _Budget(Exception):
+    def __init__(self, work: "_Work"):
+        super().__init__(work.count)
+        self.work = work
+
+
+def _degenerate(name: str, inputs, why: str, variables, residual=math.nan) -> ConvergenceError:
+    shown = ", ".join(inputs) if inputs else "(none)"
+    return ConvergenceError(
+        f"{name}: {why}. The inputs {shown} look degenerate: some of them depend on each other (or nearly so) "
+        f"while another quantity stays free, so the solution is not isolated. Check them with "
+        f"thermo_cycles.requirements('{name}', ...) or solver.advice.analyse(system, inputs), which name the "
+        f"conflicting inputs and what to give instead.",
+        variables=tuple(variables), residual=residual)
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -88,8 +141,9 @@ def _distinct(a: float, b: float) -> bool:
 
 
 class _Ctx:
-    def __init__(self, system, inputs, rels, blocks, cache, nested):
+    def __init__(self, system, inputs, rels, blocks, cache, nested, work):
         self.system = system
+        self.work = work
         self.inputs = inputs
         self.rels = rels
         self.blocks = blocks                       # list of (tuple[Relation], tuple[str])
@@ -150,7 +204,31 @@ def solve_numeric(system, inputs: Mapping[str, float], *,
     return _solve(system, inputs, validate, {}, False)
 
 
-def _solve(system, inputs, validate, cache, nested):
+def _singular(system, inputs, vals) -> bool:
+    """True if the Jacobian of the system plus inputs is rank deficient at ``vals`` (not an isolated solution)."""
+    idx = {v: i for i, v in enumerate(system.variables)}
+    fixed_ = list(inputs) + [d for d in system.defaults if d not in inputs]
+    try:
+        J = _fd_jacobian(system, vals)
+    except _EVAL_ERRORS:
+        return False                  # cannot judge; keep the candidate
+    return _numeric_rank(J, [idx[v] for v in fixed_]) < len(system.variables)
+
+
+def _regular(ctx, out):
+    """Drop candidate solutions at which the Jacobian is singular; none left means degenerate inputs."""
+    if not out:
+        return out
+    regular = [sol for sol in out if not _singular(ctx.system, ctx.inputs, sol[0])]
+    if not regular:
+        where = f"every one of the {len(out)} candidate solutions" if len(out) > 1 else "the solution"
+        raise _degenerate(ctx.name, list(ctx.inputs),
+                          f"the Jacobian is singular at {where} found (relative singular-value tolerance "
+                          f"{RANK_RTOL:g})", ctx.system.variables)
+    return regular
+
+
+def _solve(system, inputs, validate, cache, nested, work=None):
     inputs = {str(k): float(v) for k, v in inputs.items()}
     rels = system.with_inputs(inputs)
     idx = {v: i for i, v in enumerate(system.variables)}
@@ -165,13 +243,25 @@ def _solve(system, inputs, validate, cache, nested):
             f"for {n} variables, structural rank {dm.rank}; free: {free}; surplus: {surplus}")
     blocks = [(tuple(rels[e] for e in b.eqs), tuple(system.variables[v] for v in b.vars))
               for b in blt_blocks(eq_vars, n)]
-    ctx = _Ctx(system, inputs, rels, blocks, cache, nested)
+    if work is None:
+        work = _Work(MAX_WORK)
+    ctx = _Ctx(system, inputs, rels, blocks, cache, nested, work)
 
     out: list = []
     try:
         _solve_from(ctx, 0, {}, [], [], out)
     except _TooMany:
+        if not nested:
+            reg = _regular(ctx, out)          # all singular: degenerate, not ambiguous
+            out = reg if len(reg) > 1 else out
         raise _ambiguous(ctx, out, none_valid=False, problems=[]) from None
+    except _Budget as e:
+        if nested or e.work is not work:
+            raise
+        raise _degenerate(ctx.name, list(inputs), f"the solver gave up after {work.count} relation evaluations "
+                          f"without isolating a solution", system.variables) from None
+    if not nested:
+        out = _regular(ctx, out)
 
     chosen = out
     rejected: "list[tuple[dict, list]]" = []
@@ -195,7 +285,7 @@ def _solve(system, inputs, validate, cache, nested):
         raise ConvergenceError(
             f"{ctx.name}: the solution does not satisfy every relation (max scaled residual {res:.3g})",
             variables=tuple(system.variables), residual=res)
-    report = SolveReport(tuple(vs for _, vs in blocks), tuple(methods), float(res))
+    report = SolveReport(tuple(vs for _, vs in blocks), tuple(methods), float(res), work=work.count)
     return {v: float(vals[v]) for v in system.variables}, report
 
 
@@ -302,6 +392,7 @@ def _solve_block(ctx, k, vals):
 
 
 def _explicit(ctx, rel, var, vals) -> float:
+    ctx.work.add(1)
     try:
         x = rel.solve_for(var, vals)
     except _EVAL_ERRORS as e:
@@ -324,6 +415,7 @@ def _closure(ctx, rels, vs, vals):
     if len(sids) != 1:
         return None
     sid = sids.pop()
+    ctx.work.add(4)
     names = {p: f"{p}{sid}" for p in PROPS}
     known = {p: vals[n] for p, n in names.items() if n not in vs}
     if len(known) != 2 or set(vs) != {n for p, n in names.items() if p not in known}:
@@ -399,10 +491,11 @@ def _grid(lo, hi, spacing, n=N_SCAN):
     return np.sinh(np.linspace(math.asinh(lo), math.asinh(hi), n))
 
 
-def _evaluator(plan, vals):
+def _evaluator(plan, vals, work):
     t, r, order = plan
 
     def evaluate(tv):
+        work.add(len(order) + 1)
         local = {t: float(tv)}
         cm = ChainMap(local, vals)
         for rel, var in order:
@@ -426,9 +519,17 @@ def _evaluator(plan, vals):
 def _torn(ctx, k, plan, vals):
     t, r, _ = plan
     lo, hi, spacing = ctx.system.scan_range[t]
-    evaluate, g = _evaluator(plan, vals)
+    evaluate, g = _evaluator(plan, vals, ctx.work)
     xs = _grid(lo, hi, spacing)
     gs = [g(x) for x in xs]
+    finite = [abs(gv) for gv in gs if math.isfinite(gv)]
+    flat = sum(1 for a in finite if a <= FLAT_TOL)
+    if len(finite) >= 10 and flat >= 0.5 * len(finite):
+        # g vanishes along the scan: every value of t satisfies the block, the inputs do not fix it
+        raise _degenerate(ctx.name, list(ctx.inputs),
+                          f"relation {r.name!r} holds for every {t} in the scanned range ({flat} of {len(finite)} "
+                          f"samples have a scaled residual <= {FLAT_TOL:g}), so the inputs do not fix {t}",
+                          ctx.blocks[k][1], residual=max(finite))
     roots: "list[float]" = []
 
     def add(x):
@@ -464,7 +565,10 @@ def _no_solution(ctx, k, plan, xs, gs):
     t, r, _ = plan
     _, vs = ctx.blocks[k]
     lo, hi, _ = ctx.system.scan_range[t]
-    detail = _reach_message(ctx, k, plan) if not ctx.nested else None
+    detail = None
+    if not ctx.nested and not ctx.work.reach_done:
+        ctx.work.reach_done = True      # once per solve: with branching only the first error is shown anyway
+        detail = _reach_message(ctx, k, plan)
     if detail is None:
         finite = [(abs(gv), x) for x, gv in zip(xs, gs) if math.isfinite(gv)]
         if finite:
@@ -491,13 +595,25 @@ def _reach_message(ctx, k, plan):
     order = sorted(anc, key=lambda v: (_BLAME_ORDER.index(v) if v in _BLAME_ORDER else len(_BLAME_ORDER),
                                        ctx.rank.get(v, 1 << 30)))
     lo, hi, spacing = ctx.system.scan_range[p]
+    sub = _Work(max(min(REACH_WORK, ctx.work.limit - ctx.work.count), 0))
+    try:
+        return _reach_sweep(ctx, p, anc, order, lo, hi, spacing, sub)
+    except _Budget as e:
+        if e.work is not sub:
+            raise
+        return None                      # too costly: fall back to the plain no-root detail
+    finally:
+        ctx.work.add(sub.count)
+
+
+def _reach_sweep(ctx, p, anc, order, lo, hi, spacing, sub):
     for x in order:
         given = ctx.inputs.get(x, ctx.system.defaults.get(x))
         base = {kk: vv for kk, vv in ctx.inputs.items() if kk != x}
 
         def implied(pv, x=x, base=base):
             try:
-                sol, _ = _solve(ctx.system, {**base, p: float(pv)}, None, ctx.cache, True)
+                sol, _ = _solve(ctx.system, {**base, p: float(pv)}, None, ctx.cache, True, sub)
             except (ValueError, NoSolutionError, ConvergenceError, AmbiguousSolutionError):
                 return math.nan
             return sol[x]
@@ -573,6 +689,7 @@ def _newton(ctx, rels, vs, vals):
         return [math.exp(min(yi, 700.0)) if p else yi * s for yi, p, s in zip(y, pos, sc)]
 
     def F(y):
+        ctx.work.add(len(rels))
         local = dict(zip(vs, to_x(y)))
         cm = ChainMap(local, vals)
         try:

@@ -272,7 +272,8 @@ def _engine(system: EquationSystem, numeric: bool) -> _Engine:
         return hit[1]
     eng = _Engine(system, numeric)
     try:
-        ref = weakref.ref(system, lambda _r, key=key: _ENGINES.pop(key, None))
+        # the dict is bound as a default: at interpreter exit the module global may already be None
+        ref = weakref.ref(system, lambda _r, key=key, engines=_ENGINES: engines.pop(key, None))
     except TypeError:                               # not weak-referenceable: do not cache
         return eng
     _ENGINES[key] = (ref, eng)
