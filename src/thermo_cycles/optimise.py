@@ -36,7 +36,7 @@ from .fluids import AIR
 from .margins import MarginReport, check_limit_value, parse_limit_key
 from .model.cycle_def import get_cycle
 from .results import CycleResults
-from .solver import raise_for, resolve_name, system_for
+from .solver import check_plausibility_mode, raise_for, resolve_name, system_for
 
 __all__ = ["optimise", "OptimisationResult", "ACTIVE_PCT"]
 
@@ -157,10 +157,10 @@ class _Search:
             return hit
         cycle, error = None, None
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", InputPlausibilityWarning)   # already shown for the bounds
-                cycle = Cycle(self.name, fluid=self.fluid, limits=self.limits or None, on_violation="ignore",
-                              **self.fixed, **self.xmap(x))
+            # plausibility was checked once for the fixed inputs and both bounds before the search (the
+            # thresholds are lower bounds, so every point between accepted bounds is accepted too)
+            cycle = Cycle(self.name, fluid=self.fluid, limits=self.limits or None, on_violation="ignore",
+                          plausibility="off", **self.fixed, **self.xmap(x))
         except _STRUCTURAL:
             raise
         except ThermoCyclesError as e:                 # no solution, invalid cycle, ...: an infeasible point
@@ -384,14 +384,17 @@ def _no_feasible(s: _Search) -> NoFeasiblePointError:
 def optimise(name: str, *, vary: Mapping[str, "tuple[float, float]"], maximise: "str | Callable | None" = None,
              minimise: "str | Callable | None" = None, fixed: Mapping[str, float] = {},
              limits: Mapping[str, float] = {}, fluid=None, grid: int = 81,
-             seed: int = 0) -> OptimisationResult:
+             seed: int = 0, plausibility: str = "raise") -> OptimisationResult:
     """Maximise or minimise a cycle result over the inputs in ``vary`` (spec 12).
 
     vary: ``{input: (lo, hi)}``; fixed: the other inputs; together they must be well-posed. maximise /
     minimise (exactly one): a result or solved-variable name (``eta_th``, ``w_net``, ``mep``, ``eta_ii``,
     ``bwr``, ``T3``, ...) or a callable ``f(cycle) -> float``. limits: spec 11 keys (``T_max``, ``P2_max``,
     ``eta_th_min``, ...), used as constraints. grid: points of the 1-D grid. seed: the Sobol seed (n-D).
+    plausibility: "raise" (default), "warn" or "off" as for ``Cycle``; checked once, for the fixed inputs and
+    both bounds, before the search, never for the search points.
     """
+    check_plausibility_mode(plausibility)
     defn = get_cycle(name)
     fl = AIR if fluid is None else fluid
     system = system_for(defn, fl)
@@ -415,9 +418,13 @@ def optimise(name: str, *, vary: Mapping[str, "tuple[float, float]"], maximise: 
     objective, label, sign = _objective(cyc, system, maximise, minimise)
 
     # well-posedness first, with the bounds checked against the solver's ranges (spec 12, 9.8)
-    req = requirements(name, fluid=fluid, **dict(fixed), **{k: lo for k, (lo, _) in bounds.items()})
+    req = requirements(name, fluid=fluid, plausibility=plausibility, **dict(fixed),
+                       **{k: lo for k, (lo, _) in bounds.items()})
     raise_for(req, cyc)
-    requirements(name, fluid=fluid, **dict(fixed), **{k: hi for k, (_, hi) in bounds.items()})
+    with warnings.catch_warnings():            # "warn": the fixed inputs were already reported once
+        warnings.simplefilter("ignore", InputPlausibilityWarning)
+        requirements(name, fluid=fluid, plausibility=plausibility, **dict(fixed),
+                     **{k: hi for k, (_, hi) in bounds.items()})
 
     names = tuple(bounds)
     s = _Search(name, fluid, fixed, limits, names, tuple(bounds.values()), objective, label, sign)
@@ -431,7 +438,8 @@ def optimise(name: str, *, vary: Mapping[str, "tuple[float, float]"], maximise: 
     x = MappingProxyType(s.xmap(win.x))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", InputPlausibilityWarning)
-        cycle = Cycle(name, fluid=fluid, limits=dict(limits) or None, **dict(fixed), **x)
+        cycle = Cycle(name, fluid=fluid, limits=dict(limits) or None, plausibility=plausibility, **dict(fixed),
+                      **x)
     active = tuple(k for k, m in cycle.margins.items()
                    if not math.isnan(m.margin_pct) and abs(m.margin_pct) < ACTIVE_PCT)
     sense = "maximum" if sign > 0 else "minimum"

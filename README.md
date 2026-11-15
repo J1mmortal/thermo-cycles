@@ -79,7 +79,8 @@ Notes:
 - **SI everywhere, per unit mass.** T [K], P [Pa], v [m³/kg], u, h [J/kg], s [J/(kg·K)], q, w [J/kg], MEP [Pa].
   Ratios and efficiencies are fractions (0.62, not 62 %). Margins in % are labelled `_pct`.
 - `thermo_cycles.units` gives constants (`P1=1*bar`, `T1=degC(25)`). The library never converts silently. A given
-  P below 1 000 Pa or T below 100 K raises `InputPlausibilityWarning`, because that usually means kPa or °C.
+  P below 1 000 Pa or T below 100 K raises `InputError`, because that usually means kPa, bar or °C; pass
+  `plausibility="warn"` (warning only) or `"off"` when such a value is really meant.
 - **Signs:** q > 0 is heat into the fluid, w > 0 is work done by the fluid. Closed steps follow q − w = Δu, flow
   steps q − w = Δh. Compression work is negative. `q_in` and `q_out` are positive magnitudes.
 - **States** are numbered from 1 (start of compression). Hidden isentropic end points of non-ideal steps are

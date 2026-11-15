@@ -24,10 +24,15 @@ def test_bad_values(bad):
         resolve_inputs(OTTO, {"T1": bad})
 
 def test_plausibility_warning_for_kpa_and_celsius():
-    with pytest.warns(InputPlausibilityWarning, match="P1"):
+    # v0.1.1: raises by default; plausibility="warn" keeps the v0.1 warning
+    with pytest.raises(InputError, match="P1"):
         resolve_inputs(OTTO, {"P1": 100})
-    with pytest.warns(InputPlausibilityWarning, match="T1"):
+    with pytest.raises(InputError, match="T1"):
         resolve_inputs(OTTO, {"T1": 25})
+    with pytest.warns(InputPlausibilityWarning, match="P1"):
+        resolve_inputs(OTTO, {"P1": 100}, "warn")
+    with pytest.warns(InputPlausibilityWarning, match="T1"):
+        resolve_inputs(OTTO, {"T1": 25}, "warn")
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         resolve_inputs(OTTO, {"T1": 300, "P1": 1e5})

@@ -74,8 +74,11 @@ def test_no_warnings_leak_from_the_search():
 
 
 def test_plausibility_warning_still_shown_once_for_fixed_inputs():
-    with pytest.warns(InputPlausibilityWarning):
+    with pytest.raises(InputError, match="P1 = 100 Pa"):         # v0.1.1 default
         optimise("otto", vary={"r_c": (5, 10)}, maximise="eta_th", fixed=dict(T1=300, P1=100, T3=1500), grid=5)
+    with pytest.warns(InputPlausibilityWarning):
+        optimise("otto", vary={"r_c": (5, 10)}, maximise="eta_th", fixed=dict(T1=300, P1=100, T3=1500), grid=5,
+                 plausibility="warn")
 
 
 def test_no_feasible_point_reports_closest():

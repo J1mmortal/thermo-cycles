@@ -344,7 +344,20 @@ def _to_float(cyc: str, name: str, value: object) -> float:
     return x
 
 
-def resolve_inputs(system: EquationSystem, raw: "Mapping[str, object]") -> "dict[str, float]":
+PLAUSIBILITY_MODES = ("raise", "warn", "off")
+PLAUSIBLE_P_MIN = 1000.0     # Pa: a given state pressure below this usually means kPa or bar (spec 3, 9.8)
+PLAUSIBLE_T_MIN = 100.0      # K: a given state temperature below this usually means deg C (spec 3, 9.8)
+
+
+def check_plausibility_mode(plausibility: object) -> str:
+    """``plausibility`` validated against ``PLAUSIBILITY_MODES`` (else ``InputError``)."""
+    if not isinstance(plausibility, str) or plausibility not in PLAUSIBILITY_MODES:
+        raise InputError(f"plausibility must be one of {PLAUSIBILITY_MODES}, got {plausibility!r}.")
+    return plausibility
+
+
+def resolve_inputs(system: EquationSystem, raw: "Mapping[str, object]",
+                   plausibility: str = "raise") -> "dict[str, float]":
     """Canonical names and validated float values of user inputs (spec 3 and 9.8), in the given order.
 
     - Names: exact, then a unique case-insensitive match, then the alias table; else ``UnknownInputError``.
@@ -353,9 +366,11 @@ def resolve_inputs(system: EquationSystem, raw: "Mapping[str, object]") -> "dict
       positive kind must be > 0; every value must lie inside the variable's physical range (the solver's
       scan range, spec 9.5), else ``InputError`` naming the input. Without that check a value such as
       T4 = 2e5 K reaches the solver and the no-solution message blames another input.
-    - Plausibility: a given state pressure below 1 000 Pa or state temperature below 100 K emits
-      ``InputPlausibilityWarning``: those usually mean kPa or degrees Celsius were passed.
+    - Plausibility: a given state pressure below 1 000 Pa or state temperature below 100 K usually means kPa,
+      bar or degrees Celsius were passed. ``plausibility="raise"`` (default) raises ``InputError`` with the
+      fix, ``"warn"`` emits ``InputPlausibilityWarning`` instead (the v0.1 behaviour), ``"off"`` skips it.
     """
+    check_plausibility_mode(plausibility)
     cyc = _cycle_name(system)
     sids = state_ids(system.cycle) if system.cycle is not None else ()
     out: "dict[str, float]" = {}
@@ -376,14 +391,19 @@ def resolve_inputs(system: EquationSystem, raw: "Mapping[str, object]") -> "dict
             raise InputError(f"{cyc}: {name} = {_with_unit(x, unit)} is outside the range thermo_cycles can "
                              f"solve for it ({lo:g} to {_with_unit(hi, unit)}). Check the value and its "
                              f"units: inputs are SI (K, Pa, m^3/kg, J/kg).")
-        if name[:1] == "P" and name[1:] in sids and x < 1000.0:
-            alt = f"{x:g} bar or {x:g} kPa" if x < 50.0 else f"{x:g} kPa"
-            warnings.warn(f"{name} = {x:g} Pa: did you mean {alt}? thermo_cycles works in SI "
-                          f"(write {name}={x:g}*kPa or {x:g}*bar with thermo_cycles.units).",
-                          InputPlausibilityWarning, stacklevel=2)
-        if name[:1] == "T" and name[1:] in sids and x < 100.0:
-            warnings.warn(f"{name} = {x:g} K: did you mean {x:g} deg C ({x + 273.15:g} K)? thermo_cycles "
-                          f"works in SI (write {name}=degC({x:g}) with thermo_cycles.units).",
-                          InputPlausibilityWarning, stacklevel=2)
+        if plausibility != "off":
+            text = None
+            if name[:1] == "P" and name[1:] in sids and x < PLAUSIBLE_P_MIN:
+                alt = f"{x:g} bar or {x:g} kPa" if x < 50.0 else f"{x:g} kPa"
+                text = (f"{name} = {x:g} Pa: did you mean {alt}? thermo_cycles works in SI "
+                        f"(write {name}={x:g}*kPa or {x:g}*bar with thermo_cycles.units).")
+            elif name[:1] == "T" and name[1:] in sids and x < PLAUSIBLE_T_MIN:
+                text = (f"{name} = {x:g} K: did you mean {x:g} deg C ({x + 273.15:g} K)? thermo_cycles "
+                        f"works in SI (write {name}=degC({x:g}) with thermo_cycles.units).")
+            if text is not None:
+                if plausibility == "raise":
+                    raise InputError(f"{cyc}: {text} If {_with_unit(x, unit or 'SI')} is really meant, pass "
+                                     f"plausibility='warn' or plausibility='off'.")
+                warnings.warn(text, InputPlausibilityWarning, stacklevel=2)
         out[name] = x
     return out

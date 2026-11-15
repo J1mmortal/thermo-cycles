@@ -219,9 +219,11 @@ def test_with_inputs_keeps_options():
 
 
 def test_plausibility_warning_from_front():
-    # spec §3/§9.8: a sub-1000 Pa input is physically solvable, so it warns loudly but still solves
+    # v0.1.1 (spec §3/§9.8): a sub-1000 Pa input raises by default; plausibility="warn" solves it with a warning
+    with pytest.raises(InputError, match="P1 = 100 Pa: did you mean 100 kPa"):
+        Cycle("otto", T1=300, P1=100, r_c=8, q_in=1e6)
     with pytest.warns(InputPlausibilityWarning, match="P1 = 100 Pa"):
-        c = Cycle("otto", T1=300, P1=100, r_c=8, q_in=1e6)
+        c = Cycle("otto", T1=300, P1=100, r_c=8, q_in=1e6, plausibility="warn")
     assert c.states[1].P == 100 and c.results.eta_th == pytest.approx(1 - 8 ** -0.4, rel=1e-9)
 
 

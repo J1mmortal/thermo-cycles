@@ -13,11 +13,13 @@ from ..errors import InconsistentInputError, InvalidCycleError, CycleValidityWar
 from ..model.cycle_def import CycleDef
 from .advice import Requirements, analyse, raise_for
 from .numeric import SolveReport, _fmt, _solve, solve_numeric
-from .system import EquationSystem, build_system, resolve_inputs, resolve_name
+from .system import (PLAUSIBILITY_MODES, EquationSystem, build_system, check_plausibility_mode, resolve_inputs,
+                     resolve_name)
 
 __all__ = ["solve_cycle", "system_for", "REDUNDANT_RTOL", "CHECK_MODES",
            "Requirements", "analyse", "raise_for", "SolveReport", "solve_numeric",
-           "EquationSystem", "build_system", "resolve_inputs", "resolve_name"]
+           "EquationSystem", "build_system", "resolve_inputs", "resolve_name", "PLAUSIBILITY_MODES",
+           "check_plausibility_mode"]
 
 REDUNDANT_RTOL = 1e-6                 # spec 9.6: |given - implied| <= 1e-6 max(|given|, 1)
 CHECK_MODES = ("raise", "warn", "off")
@@ -105,7 +107,7 @@ def _diagnose_zero_divisor(defn: CycleDef, fluid, system: EquationSystem, active
 
 
 def solve_cycle(defn: CycleDef, fluid, inputs: Mapping[str, object], *, allow_redundant: bool = False,
-                check: str = "raise"):
+                check: str = "raise", plausibility: str = "raise"):
     """Solve one cycle from user inputs and return a ``CycleState``.
 
     Order (spec 9.4-9.8, 10): resolve and validate the inputs (``resolve_inputs``), classify them (``analyse``)
@@ -114,6 +116,8 @@ def solve_cycle(defn: CycleDef, fluid, inputs: Mapping[str, object], *, allow_re
     ``InconsistentInputError`` on a mismatch); then ``solve_numeric`` (candidate roots filtered by the validity
     checks, spec 9.5 step 3), the results, and the validity checks of spec 9.7: ``check="raise"`` raises
     ``InvalidCycleError`` listing every problem, ``"warn"`` emits ``CycleValidityWarning``, ``"off"`` skips them.
+    ``plausibility`` ("raise" default, "warn", "off") governs given state temperatures below 100 K and
+    pressures below 1000 Pa (``resolve_inputs``).
 
     Undefined results raise ``InvalidCycleError`` in every check mode, ``"off"`` included: zero heat input
     (eta_th = w_net/q_in), zero swept volume (mep) or zero expansion work (bwr), within 1e-9 of the cycle's scale
@@ -127,7 +131,7 @@ def solve_cycle(defn: CycleDef, fluid, inputs: Mapping[str, object], *, allow_re
     if check not in CHECK_MODES:
         raise ValueError(f"check must be one of {CHECK_MODES}, got {check!r}")
     system = system_for(defn, fluid)
-    given = resolve_inputs(system, inputs)
+    given = resolve_inputs(system, inputs, plausibility)
     req = analyse(system, list(given))
     active, dropped = given, {}
     if req.status == "over" and allow_redundant:

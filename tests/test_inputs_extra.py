@@ -90,10 +90,10 @@ def test_non_string_name_rejected():
 
 def test_plausibility_messages():
     with pytest.warns(InputPlausibilityWarning) as rec:
-        resolve_inputs(OTTO, {"P1": 100})
+        resolve_inputs(OTTO, {"P1": 100}, "warn")
     assert str(rec[0].message).startswith("P1 = 100 Pa: did you mean 100 kPa? thermo_cycles works in SI")
     with pytest.warns(InputPlausibilityWarning) as rec:
-        resolve_inputs(OTTO, {"T1": 25})
+        resolve_inputs(OTTO, {"T1": 25}, "warn")
     assert str(rec[0].message).startswith(
         "T1 = 25 K: did you mean 25 deg C (298.15 K)? thermo_cycles works in SI")
     # boundaries: exactly 1000 Pa and 100 K do not warn; the check is for T and P only
@@ -103,5 +103,7 @@ def test_plausibility_messages():
 
 
 def test_plausibility_applies_to_every_state():
-    with pytest.warns(InputPlausibilityWarning, match="P3"):
+    with pytest.raises(InputError, match="P3 = 500 Pa"):
         resolve_inputs(OTTO, {"P3": 500.0})
+    with pytest.warns(InputPlausibilityWarning, match="P3"):
+        resolve_inputs(OTTO, {"P3": 500.0}, "warn")

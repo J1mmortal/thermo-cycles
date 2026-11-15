@@ -104,8 +104,10 @@ thermo-cycles/
   Ratios and efficiencies are dimensionless fractions (0.62, not 62 %). Margins in % are the one exception and are
   labelled `_pct`.
 - `thermo_cycles.units` gives you constants so you can write `P1=1*bar` or `T1=degC(25)`. The library never
-  converts silently. A plausibility warning (`InputPlausibilityWarning`) fires when a given pressure is below
-  1 000 Pa or a given temperature is below 100 K, because those usually mean kPa or °C were passed (§9.8).
+  converts silently. A given state pressure below 1 000 Pa or state temperature below 100 K raises `InputError`
+  by default, because those usually mean kPa, bar or °C were passed (§9.8); the keyword
+  `plausibility="warn"` turns this into `InputPlausibilityWarning` (the v0.1 behaviour) and `"off"` skips it
+  (v0.1.1).
 - **Signs:** q > 0 is heat into the working fluid; w > 0 is work done by the fluid. Closed (piston) steps follow
   q − w = Δu and flow (steady-flow) steps follow q − w = Δh. Compression work is therefore negative.
   `q_in` and `q_out` are reported as positive magnitudes: q_in = Σ q over heat_in steps and
@@ -179,25 +181,28 @@ Signatures (all keyword-only after the name):
 class Cycle:
     def __init__(self, name: str, *, fluid: Fluid | None = None, limits: Mapping[str, float] | None = None,
                  allow_redundant: bool = False, check: Literal["raise", "warn", "off"] = "raise",
-                 on_violation: Literal["warn", "raise", "ignore"] = "warn", **inputs: float) -> None
+                 on_violation: Literal["warn", "raise", "ignore"] = "warn",
+                 plausibility: Literal["raise", "warn", "off"] = "raise", **inputs: float) -> None
     name: str; definition: CycleDef; fluid: Fluid; inputs: Mapping[str, float]   # canonical names
     states: Mapping[int, State]; hidden_states: Mapping[str, State]
     steps: tuple[StepResult, ...]; results: CycleResults; params: Mapping[str, float]
     margins: MarginReport; cycle_state: CycleState
     def value(self, name: str) -> float
-    def with_inputs(self, **changes: float | None) -> "Cycle"
+    def with_inputs(self, **changes: float | None) -> "Cycle"      # keeps limits, check, on_violation, plausibility
     def plot(self, kind: Literal["Ts", "Pv", "both"] = "Ts", **kw) -> Any
     def summary(self) -> str
     def to_dict(self) -> dict
 
-def requirements(name: str, *, fluid: Fluid | None = None, **inputs: float) -> Requirements
+def requirements(name: str, *, fluid: Fluid | None = None, plausibility: str = "raise",
+                 **inputs: float) -> Requirements
 def describe(name: str) -> str
 def list_cycles() -> list[str]
 def register_cycle(defn: CycleDef, *, replace: bool = False) -> None      # advanced; how the catalogue is built
 def optimise(name: str, *, vary: Mapping[str, tuple[float, float]], maximise: str | Callable | None = None,
              minimise: str | Callable | None = None, fixed: Mapping[str, float] = {},
              limits: Mapping[str, float] = {}, fluid: Fluid | None = None, grid: int = 81,
-             seed: int = 0) -> OptimisationResult
+             seed: int = 0, plausibility: Literal["raise", "warn", "off"] = "raise") -> OptimisationResult
+# solve_cycle(defn, fluid, inputs, *, allow_redundant=False, check="raise", plausibility="raise")  (internal)
 ```
 
 `Cycle` solves eagerly in `__init__` and is immutable afterwards. Errors are raised at construction.
@@ -664,8 +669,14 @@ Before analysis:
 - Range: an input outside the solvable range is an `InputError`, not a warning (T outside 1..1e5 K, P outside
   1..1e10 Pa, v outside 1e-6..1e4 m³/kg, eta_th > 1, r_c < 1, ...: the scan ranges of §9.5 and the parameter
   `bounds`). The message names the input and its range.
-- Plausibility: given P < 1 000 Pa or T < 100 K -> `InputPlausibilityWarning` ("P1 = 100 Pa: did you mean
-  100 kPa? thermo_cycles works in SI").
+- Plausibility (v0.1.1): a given state pressure P < 1 000 Pa or state temperature T < 100 K (thresholds strict:
+  1 000 Pa and 100 K pass) raises `InputError` by default ("otto: P1 = 100 Pa: did you mean 100 kPa?
+  thermo_cycles works in SI (write P1=100*kPa or 100*bar with thermo_cycles.units). If 100 Pa is really meant,
+  pass plausibility='warn' or plausibility='off'."). The keyword `plausibility` on `Cycle`, `requirements`,
+  `optimise` and `solve_cycle` (forwarded by `with_inputs`) chooses `"raise"` (default), `"warn"`
+  (`InputPlausibilityWarning`, the v0.1 behaviour) or `"off"`. `optimise` checks the fixed inputs and both
+  bounds once before the search and never for the search points (the thresholds are lower bounds, so every
+  point between accepted bounds is accepted too).
 
 ### 9.9 Why this replaces the mode patterns
 

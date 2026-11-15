@@ -13,7 +13,8 @@ from .errors import InputError, LimitViolationError, LimitViolationWarning, Unkn
 from .fluids import AIR
 from .margins import check_limit_value, describe_violations, evaluate_limits, parse_limit_key
 from .model.cycle_def import get_cycle
-from .solver import CHECK_MODES, analyse, resolve_inputs, resolve_name, solve_cycle, system_for
+from .solver import (CHECK_MODES, analyse, check_plausibility_mode, resolve_inputs, resolve_name, solve_cycle,
+                     system_for)
 
 __all__ = ["Cycle", "requirements", "describe"]
 
@@ -31,11 +32,12 @@ class Cycle:
     new cycle. See spec section 4 for the arguments.
     """
 
-    __slots__ = ("_cs", "_limits", "_margins", "_allow_redundant", "_check", "_on_violation")
+    __slots__ = ("_cs", "_limits", "_margins", "_allow_redundant", "_check", "_on_violation", "_plausibility")
 
     def __init__(self, name: str, *, fluid=None, limits: "Mapping[str, float] | None" = None,
                  allow_redundant: bool = False, check: str = "raise", on_violation: str = "warn",
-                 **inputs: float) -> None:
+                 plausibility: str = "raise", **inputs: float) -> None:
+        check_plausibility_mode(plausibility)
         if check not in CHECK_MODES:
             raise InputError(f"check must be one of {CHECK_MODES}, got {check!r}.")
         if on_violation not in VIOLATION_MODES:
@@ -49,7 +51,8 @@ class Cycle:
             for key, val in limits.items():
                 parse_limit_key(key, system)
                 check_limit_value(key, val)
-        cs = solve_cycle(defn, fl, inputs, allow_redundant=bool(allow_redundant), check=check)
+        cs = solve_cycle(defn, fl, inputs, allow_redundant=bool(allow_redundant), check=check,
+                         plausibility=plausibility)
         report = evaluate_limits(cs, limits or {})
         if report.violated and on_violation != "ignore":
             message = describe_violations(report.violated)
@@ -62,6 +65,7 @@ class Cycle:
         object.__setattr__(self, "_allow_redundant", bool(allow_redundant))
         object.__setattr__(self, "_check", check)
         object.__setattr__(self, "_on_violation", on_violation)
+        object.__setattr__(self, "_plausibility", plausibility)
 
     # immutability -------------------------------------------------------------------------------------
     def __setattr__(self, key, value):
@@ -153,7 +157,7 @@ class Cycle:
                 merged[canonical] = value
         return Cycle(self.name, fluid=self.fluid, limits=dict(self._limits) or None,
                      allow_redundant=self._allow_redundant, check=self._check, on_violation=self._on_violation,
-                     **merged)
+                     plausibility=self._plausibility, **merged)
 
     def plot(self, kind: str = "Ts", **kw) -> Any:
         """T-s ("Ts"), P-v ("Pv") or both plot of this cycle; see ``thermo_cycles.plotting.plot_cycle``."""
@@ -212,14 +216,15 @@ def _num(x: float) -> str:
     return f"{x:.6g}" if math.isfinite(x) else str(x)
 
 
-def requirements(name: str, *, fluid=None, **inputs: float):
+def requirements(name: str, *, fluid=None, plausibility: str = "raise", **inputs: float):
     """What a cycle still needs, or which inputs conflict, for ``inputs`` (spec 9.4); returns ``Requirements``.
 
-    Input names and values are resolved and validated as for ``Cycle`` (unknown names and bad values raise).
+    Input names and values are resolved and validated as for ``Cycle`` (unknown names and bad values raise;
+    ``plausibility`` as for ``Cycle``).
     """
     defn = get_cycle(name)
     system = system_for(defn, _fluid_or_air(fluid))
-    given = resolve_inputs(system, inputs)
+    given = resolve_inputs(system, inputs, check_plausibility_mode(plausibility))
     return analyse(system, list(given))
 
 
