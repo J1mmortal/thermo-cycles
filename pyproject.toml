@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project]
+name = "thermo-cycles"
+version = "0.1.0"
+description = "Thermodynamic cycle calculator: pick a cycle, give what you know, get every state"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Jesper Meijerink", email = "jnmeijerink@tudelft.nl" }]
+dependencies = [
+    "numpy>=1.23",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+dev = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/J1mmortal/thermo-cycles"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
