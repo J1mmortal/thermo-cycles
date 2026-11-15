@@ -137,7 +137,8 @@ def validity_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple
     - all T, P, v > 0 (main and hidden states);
     - compression: P_b > P_a and w < 0; expansion: P_b < P_a and w > 0;
     - heat_in: q >= -1e-9 q_in (zero allowed) and q_in > 0 overall; heat_out: q <= 1e-9 q_in;
-    - parameters inside their bounds.
+    - parameters inside their bounds;
+    - regenerator (role ``internal`` steps): heat flows hot to cold, see ``_internal_problems``.
 
     Messages name the step and say what to change, e.g. "step 2→3 (isochoric, heat_in) has q = -120.4 kJ/kg < 0:
     T3 = 600 K is below T2 = 689.2 K. Raise T3 / q_in or lower r_c."
@@ -185,6 +186,7 @@ def validity_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple
     if not q_in > 0:
         problems.append(f"q_in = {q_in / 1e3:.1f} kJ/kg is not > 0: the heat_in steps take in no net heat, so "
                         f"this is not a power cycle.")
+    problems += _internal_problems(defn, values, steps, q_in)
     for p in defn.params:
         if p.bounds is None:
             continue
@@ -193,4 +195,76 @@ def validity_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple
         if not lo <= x <= hi:
             problems.append(f"parameter {p.name} = {x:.6g} is outside its bounds [{lo:g}, {hi:g}] "
                             f"({p.description}).")
+    return problems
+
+
+# Spec 9.7 regenerator rule: comparisons of temperatures allow this relative round-off (eps = 1 makes T3 = T5
+# and T6 = T2 up to rounding).
+REGEN_T_RTOL = 1e-9
+# Internal steps only move heat between themselves: their q must sum to zero within this fraction of the
+# larger of q_in and the largest internal |q|.
+INTERNAL_Q_RTOL = 1e-6
+
+
+def _internal_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple[StepResult, ...]",
+                       q_in: float) -> "list[str]":
+    """Regenerator checks (spec 9.7) for the steps with role ``internal``.
+
+    Internal steps are paired in definition order, (1st, 2nd), (3rd, 4th), ...; in each pair the first step is
+    the cold side (the stream the regenerator heats, a_c -> b_c) and the second the hot side (a_h -> b_h).
+    Counterflow, heat flowing hot to cold needs T(a_h) >= T(b_c) and T(b_h) >= T(a_c); for brayton_regen that
+    is T5 >= T3 and T6 >= T2. Together with the energy balance this gives 0 <= eps <= 1 and T5 >= T2, except
+    at eps = 1, where both hold with equality even when T5 < T2 (cold side cooled, hot side heated). So
+    T(a_h) >= T(a_c) (T5 >= T2) is also checked explicitly (deviation from the letter of spec 9.7, which
+    states T5 > T2 only as a consequence). The order matters: when T5 < T2 the solved "cold" side is in fact cooled, and pairing by the sign of q would
+    hide that. The internal heats must also cancel (w_net = q_in - q_out).
+    """
+    internal = [st for st in steps if st.role == "internal"]
+    problems: "list[str]" = []
+    if not internal:
+        return problems
+    lower = [p.name for p in defn.params if p.name in _COMPRESSION_PARAMS]
+    peak = [f"T{st.b}" for st in steps if st.role == "heat_in"]
+    tuning = [p.name for p in defn.params if p.name in ("eps", "dT_regen")]
+    for cold, hot in zip(internal[0::2], internal[1::2]):
+        ci, co, hi, ho = cold.a, cold.b, hot.a, hot.b
+        T = {k: float(values[f"T{k}"]) for k in (ci, co, hi, ho)}
+        tol = REGEN_T_RTOL * max(abs(x) for x in T.values())
+        label = f"regenerator (cold side {ci}→{co}, hot side {hi}→{ho})"
+        bad = []
+        if not T[hi] >= T[co] - tol:
+            bad.append(f"hot inlet T{hi} = {_K(T[hi])} is below cold outlet T{co} = {_K(T[co])}")
+        if not T[ho] >= T[ci] - tol:
+            bad.append(f"hot outlet T{ho} = {_K(T[ho])} is below cold inlet T{ci} = {_K(T[ci])}")
+        if not T[hi] >= T[ci] - tol and not bad:
+            # eps = 1 gives T(b_c) = T(a_h) and T(b_h) = T(a_c), so the two checks above pass with equality
+            # even when the streams are swapped; the inlet comparison catches that case.
+            bad.append(f"hot inlet T{hi} = {_K(T[hi])} is below cold inlet T{ci} = {_K(T[ci])} (the "
+                       f"\"cold\" side {ci}→{co} is cooled, q = {cold.q / 1e3:.1f} kJ/kg)")
+        if not bad:
+            continue
+        msg = f"{label}: {' and '.join(bad)}, so heat would flow from the cold stream to the hot one. "
+        if T[hi] < T[ci] - tol:
+            fix = [f"lower {' / '.join(lower)}"] if lower else ["reduce the compression"]
+            fix += [f"raise {' / '.join(peak)}"] if peak else []
+            alt = defn.name[:-len("_regen")] if defn.name.endswith("_regen") else ""
+            msg += (f"The hot stream enters colder than the cold stream (T{hi} < T{ci}), so no regenerator "
+                    f"effectiveness in [0, 1] works: {' or '.join(fix)}"
+                    + (f", or use the cycle {alt!r} without regeneration." if alt else
+                       ", or remove the regenerator."))
+        else:
+            fix = []
+            if "eps" in tuning:
+                fix.append("lower eps (<= 1)")
+            if "dT_regen" in tuning:
+                fix.append("raise dT_regen (>= 0)")
+            advice = " or ".join(fix) if fix else "reduce the regenerator heat transfer"
+            msg += advice[:1].upper() + advice[1:] + "."
+        problems.append(msg)
+    q_sum = math.fsum(st.q for st in internal)
+    scale = max([abs(q_in)] + [abs(st.q) for st in internal])
+    if not abs(q_sum) <= INTERNAL_Q_RTOL * scale:
+        names = ", ".join(f"{st.a}→{st.b}" for st in internal)
+        problems.append(f"internal steps {names} exchange a net q = {q_sum / 1e3:.4g} kJ/kg with the "
+                        f"surroundings: internal (regenerator) steps may only move heat between themselves.")
     return problems
