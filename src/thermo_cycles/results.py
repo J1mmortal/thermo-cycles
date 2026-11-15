@@ -225,14 +225,15 @@ def _internal_problems(defn: CycleDef, values: Mapping[str, float], steps: "tupl
                        q_in: float) -> "list[str]":
     """Regenerator checks (spec 9.7) for the steps with role ``internal``.
 
-    Internal steps are paired in definition order, (1st, 2nd), (3rd, 4th), ...; in each pair the first step is
-    the cold side (the stream the regenerator heats, a_c -> b_c) and the second the hot side (a_h -> b_h).
-    Counterflow, heat flowing hot to cold needs T(a_h) >= T(b_c) and T(b_h) >= T(a_c); for brayton_regen that
-    is T5 >= T3 and T6 >= T2. Together with the energy balance this gives 0 <= eps <= 1 and T5 >= T2, except
+    The pairs are the ones declared in ``CycleDef.regenerators``, ((a_c, b_c), (a_h, b_h)): the cold side (the
+    stream the regenerator heats, a_c -> b_c) and the hot side (a_h -> b_h); ``validate_cycle`` makes sure every
+    internal step is in exactly one pair. Counterflow, heat flowing hot to cold needs T(a_h) >= T(b_c) and
+    T(b_h) >= T(a_c); for brayton_regen that is T5 >= T3 and T6 >= T2. Together with the energy balance this gives 0 <= eps <= 1 and T5 >= T2, except
     at eps = 1, where both hold with equality even when T5 < T2 (cold side cooled, hot side heated). So
     T(a_h) >= T(a_c) (T5 >= T2) is also checked explicitly (deviation from the letter of spec 9.7, which
-    states T5 > T2 only as a consequence). The order matters: when T5 < T2 the solved "cold" side is in fact cooled, and pairing by the sign of q would
-    hide that. The internal heats must also cancel (w_net = q_in - q_out).
+    states T5 > T2 only as a consequence). The declared sides matter: when T5 < T2 the solved "cold" side
+    is in fact cooled, and pairing by the sign of q would hide that. The internal heats must also cancel
+    (w_net = q_in - q_out).
     """
     internal = [st for st in steps if st.role == "internal"]
     problems: "list[str]" = []
@@ -241,7 +242,9 @@ def _internal_problems(defn: CycleDef, values: Mapping[str, float], steps: "tupl
     lower = [p.name for p in defn.params if p.name in _COMPRESSION_PARAMS]
     peak = [f"T{st.b}" for st in steps if st.role == "heat_in"]
     tuning = [p.name for p in defn.params if p.name in ("eps", "dT_regen")]
-    for cold, hot in zip(internal[0::2], internal[1::2]):
+    by_ab = {(st.a, st.b): st for st in internal}
+    for (cold_ab, hot_ab) in defn.regenerators:
+        cold, hot = by_ab[tuple(cold_ab)], by_ab[tuple(hot_ab)]
         ci, co, hi, ho = cold.a, cold.b, hot.a, hot.b
         T = {k: float(values[f"T{k}"]) for k in (ci, co, hi, ho)}
         tol = REGEN_T_RTOL * max(abs(x) for x in T.values())
