@@ -17,20 +17,20 @@ T2_BRAYTON10 = 300 * 10 ** (0.4 / 1.4)     # isentropic T2 of Brayton r_p = 10
 ZERO_HEAT = [
     # (cycle, inputs, substrings every message must contain)
     ("otto", dict(T1=300, P1=1e5, r_c=8, T3=T2_OTTO8),
-     ["zero heat input", "step 2→3 (isochoric, heat_in)", "T3 = T2", "raise T3 / q_in"]),
+     ["zero heat input", "step 2->3 (isochoric, heat_in)", "T3 = T2", "raise T3 / q_in"]),
     ("otto", dict(T1=300, P1=1e5, r_c=8, q_in=0.0),
-     ["zero heat input", "step 2→3 (isochoric, heat_in)", "T3 = T2", "raise T3 / q_in"]),
+     ["zero heat input", "step 2->3 (isochoric, heat_in)", "T3 = T2", "raise T3 / q_in"]),
     ("atkinson", dict(T1=300, P1=1e5, r_c=8, r_e=8),
-     ["zero heat input", "step 2→3 (isochoric, heat_in)", "T3 = T2", "r_e must exceed r_c"]),
+     ["zero heat input", "step 2->3 (isochoric, heat_in)", "T3 = T2", "r_e must exceed r_c"]),
     ("diesel", dict(T1=300, P1=1e5, r_c=18, cutoff=1),
-     ["zero heat input", "step 2→3 (isobaric, heat_in)", "T3 = T2", "cutoff = 1"]),
+     ["zero heat input", "step 2->3 (isobaric, heat_in)", "T3 = T2", "cutoff = 1"]),
     ("dual", dict(T1=300, P1=1e5, r_c=18, alpha=1, cutoff=1),
-     ["zero heat input", "step 2→3 (isochoric, heat_in)", "step 3→4 (isobaric, heat_in)", "alpha = 1",
+     ["zero heat input", "step 2->3 (isochoric, heat_in)", "step 3->4 (isobaric, heat_in)", "alpha = 1",
       "cutoff = 1"]),
     ("brayton", dict(T1=300, P1=1e5, r_p=10, T3=T2_BRAYTON10),
-     ["zero heat input", "step 2→3 (isobaric, heat_in)", "T3 = T2", "raise T3 / q_in"]),
+     ["zero heat input", "step 2->3 (isobaric, heat_in)", "T3 = T2", "raise T3 / q_in"]),
     ("brayton", dict(T1=300, P1=1e5, r_p=10, q_in=0.0),
-     ["zero heat input", "step 2→3 (isobaric, heat_in)", "T3 = T2", "raise T3 / q_in"]),
+     ["zero heat input", "step 2->3 (isobaric, heat_in)", "T3 = T2", "raise T3 / q_in"]),
 ]
 
 OTHER_UNDEFINED = [
@@ -86,7 +86,7 @@ def test_otto_t3_equal_t2_off_no_longer_returns_nonsense_eta():
 
 
 def test_zero_heat_no_spurious_heat_out_sign_problem():
-    # With q_in ~ 0 the heat-sign tolerance uses the cycle's step scale, so 4→1 (q = +rounding) is not reported.
+    # With q_in ~ 0 the heat-sign tolerance uses the cycle's step scale, so 4->1 (q = +rounding) is not reported.
     with pytest.raises(InvalidCycleError) as ei:
         Cycle("otto", T1=300, P1=1e5, r_c=8, T3=T2_OTTO8)
     assert not any("heat_out" in p for p in ei.value.problems)

@@ -259,7 +259,7 @@ _AMBIGUOUS_NOTE = {
 # Quantities computed after the solve (spec 9.1): they involve max/min and cannot be inputs.
 _POST_SOLVE = ("eta_carnot", "eta_ii", "t_max", "t_min", "p_max", "p_min", "v_max", "v_min")
 
-_UNITS = {"T": "K", "P": "Pa", "v": "m³/kg", "u": "J/kg", "h": "J/kg", "s": "J/(kg·K)"}
+_UNITS = {"T": "K", "P": "Pa", "v": "m^3/kg", "u": "J/kg", "h": "J/kg", "s": "J/(kg*K)"}
 
 
 def _cycle_name(system: EquationSystem) -> str:
@@ -375,14 +375,14 @@ def resolve_inputs(system: EquationSystem, raw: "Mapping[str, object]") -> "dict
         if not lo <= x <= hi:
             raise InputError(f"{cyc}: {name} = {_with_unit(x, unit)} is outside the range thermo_cycles can "
                              f"solve for it ({lo:g} to {_with_unit(hi, unit)}). Check the value and its "
-                             f"units: inputs are SI (K, Pa, m³/kg, J/kg).")
+                             f"units: inputs are SI (K, Pa, m^3/kg, J/kg).")
         if name[:1] == "P" and name[1:] in sids and x < 1000.0:
             alt = f"{x:g} bar or {x:g} kPa" if x < 50.0 else f"{x:g} kPa"
             warnings.warn(f"{name} = {x:g} Pa: did you mean {alt}? thermo_cycles works in SI "
                           f"(write {name}={x:g}*kPa or {x:g}*bar with thermo_cycles.units).",
                           InputPlausibilityWarning, stacklevel=2)
         if name[:1] == "T" and name[1:] in sids and x < 100.0:
-            warnings.warn(f"{name} = {x:g} K: did you mean {x:g} °C ({x + 273.15:g} K)? thermo_cycles "
+            warnings.warn(f"{name} = {x:g} K: did you mean {x:g} deg C ({x + 273.15:g} K)? thermo_cycles "
                           f"works in SI (write {name}=degC({x:g}) with thermo_cycles.units).",
                           InputPlausibilityWarning, stacklevel=2)
         out[name] = x

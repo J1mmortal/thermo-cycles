@@ -156,7 +156,7 @@ def _hopcroft_karp(adj: list[tuple[int, ...]], n_vars: int) -> tuple[list, list]
 
 
 def max_matching(eq_vars: Sequence[frozenset[int]], n_vars: int) -> Matching:
-    """Maximum bipartite matching (Hopcroft-Karp, O(E·sqrt(V)))."""
+    """Maximum bipartite matching (Hopcroft-Karp, O(E*sqrt(V)))."""
     adj = _adjacency(eq_vars, n_vars)
     eq_to, var_to = _hopcroft_karp(adj, operator.index(n_vars))
     return Matching(tuple(eq_to), tuple(var_to))

@@ -151,12 +151,12 @@ def validity_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple
     - parameters inside their bounds;
     - regenerator (role ``internal`` steps): heat flows hot to cold, see ``_internal_problems``.
 
-    Messages name the step and say what to change, e.g. "step 2→3 (isochoric, heat_in) has q = -120.4 kJ/kg < 0:
+    Messages name the step and say what to change, e.g. "step 2->3 (isochoric, heat_in) has q = -120.4 kJ/kg < 0:
     T3 = 600 K is below T2 = 689.2 K. Raise T3 / q_in or lower r_c."
     """
     problems: "list[str]" = []
     for sid in state_ids(defn):
-        for p, unit in (("T", "K"), ("P", "Pa"), ("v", "m³/kg")):
+        for p, unit in (("T", "K"), ("P", "Pa"), ("v", "m^3/kg")):
             x = values[f"{p}{sid}"]
             if not x > 0:
                 problems.append(f"state {sid}: {p}{sid} = {x:.6g} {unit} is not > 0.")
@@ -169,7 +169,7 @@ def validity_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple
     lower = [p.name for p in defn.params if p.name in _COMPRESSION_PARAMS]
     for st in steps:
         a, b = st.a, st.b
-        label = f"step {a}→{b} ({st.kind}, {st.role})"
+        label = f"step {a}->{b} ({st.kind}, {st.role})"
         Pa, Pb = values[f"P{a}"], values[f"P{b}"]
         Ta, Tb = values[f"T{a}"], values[f"T{b}"]
         if st.role == "compression":
@@ -248,7 +248,7 @@ def _internal_problems(defn: CycleDef, values: Mapping[str, float], steps: "tupl
         ci, co, hi, ho = cold.a, cold.b, hot.a, hot.b
         T = {k: float(values[f"T{k}"]) for k in (ci, co, hi, ho)}
         tol = REGEN_T_RTOL * max(abs(x) for x in T.values())
-        label = f"regenerator (cold side {ci}→{co}, hot side {hi}→{ho})"
+        label = f"regenerator (cold side {ci}->{co}, hot side {hi}->{ho})"
         bad = []
         if not T[hi] >= T[co] - tol:
             bad.append(f"hot inlet T{hi} = {_K(T[hi])} is below cold outlet T{co} = {_K(T[co])}")
@@ -258,7 +258,7 @@ def _internal_problems(defn: CycleDef, values: Mapping[str, float], steps: "tupl
             # eps = 1 gives T(b_c) = T(a_h) and T(b_h) = T(a_c), so the two checks above pass with equality
             # even when the streams are swapped; the inlet comparison catches that case.
             bad.append(f"hot inlet T{hi} = {_K(T[hi])} is below cold inlet T{ci} = {_K(T[ci])} (the "
-                       f"\"cold\" side {ci}→{co} is cooled, q = {cold.q / 1e3:.1f} kJ/kg)")
+                       f"\"cold\" side {ci}->{co} is cooled, q = {cold.q / 1e3:.1f} kJ/kg)")
         if not bad:
             continue
         msg = f"{label}: {' and '.join(bad)}, so heat would flow from the cold stream to the hot one. "
@@ -282,7 +282,7 @@ def _internal_problems(defn: CycleDef, values: Mapping[str, float], steps: "tupl
     q_sum = math.fsum(st.q for st in internal)
     scale = max([abs(q_in)] + [abs(st.q) for st in internal])
     if not abs(q_sum) <= INTERNAL_Q_RTOL * scale:
-        names = ", ".join(f"{st.a}→{st.b}" for st in internal)
+        names = ", ".join(f"{st.a}->{st.b}" for st in internal)
         problems.append(f"internal steps {names} exchange a net q = {q_sum / 1e3:.4g} kJ/kg with the "
                         f"surroundings: internal (regenerator) steps may only move heat between themselves.")
     return problems
@@ -354,7 +354,7 @@ def undefined_results(defn: CycleDef, values: Mapping[str, float], steps: "tuple
             Ta, Tb = float(values[f"T{st.a}"]), float(values[f"T{st.b}"])
             why = f"T{st.b} = T{st.a} = {_K(Ta)}" if _same(Ta, Tb) else f"T{st.a} = {_K(Ta)}, T{st.b} = {_K(Tb)}"
             q = 0.0 if abs(st.q) <= tol else st.q
-            parts.append(f"step {st.a}→{st.b} ({st.kind}, heat_in) has q = {q / 1e3:.1f} kJ/kg ({why})")
+            parts.append(f"step {st.a}->{st.b} ({st.kind}, heat_in) has q = {q / 1e3:.1f} kJ/kg ({why})")
         q_show = 0.0 if abs(q_in) <= tol else q_in
         peak = " / ".join([f"T{st.b}" for st in steps if st.role == "heat_in"] + ["q_in"])
         fix = hints + [f"raise {peak} (heat must enter the cycle)"]
@@ -366,12 +366,12 @@ def undefined_results(defn: CycleDef, values: Mapping[str, float], steps: "tuple
         if _same(va, vb):
             fix = hints or ([f"raise {' / '.join(lower)} above 1"] if lower else
                             ["give the states different volumes"])
-            problems.append(f"zero swept volume: v{a} = v{b} = {va:.6g} m³/kg, so mep = w_net/(v{a} - v{b}) is "
+            problems.append(f"zero swept volume: v{a} = v{b} = {va:.6g} m^3/kg, so mep = w_net/(v{a} - v{b}) is "
                             f"undefined (no compression or expansion). Fix: {'; or '.join(fix)}.")
     else:
         w_exp = math.fsum(s.w for s in steps if s.role == "expansion")
         if abs(w_exp) <= tol:
-            exps = ", ".join(f"{s.a}→{s.b}" for s in steps if s.role == "expansion")
+            exps = ", ".join(f"{s.a}->{s.b}" for s in steps if s.role == "expansion")
             pr = ", ".join(f"P{s.a} = P{s.b} = {_kpa(float(values[f'P{s.a}']))}" for s in steps
                            if s.role == "expansion" and _same(float(values[f"P{s.a}"]), float(values[f"P{s.b}"])))
             fix = hints or ([f"raise {' / '.join(lower)} above 1"] if lower else

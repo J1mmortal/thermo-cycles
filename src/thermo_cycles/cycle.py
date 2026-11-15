@@ -236,7 +236,7 @@ def describe(name: str) -> str:
         out.append(defn.description)
     out += ["", f"Name: {defn.name}   System: {defn.system}   States: {', '.join(str(s) for s in defn.states)}",
             "", "Steps:"]
-    out += [f"  {st.a}→{st.b} {st.kind} ({st.role})"
+    out += [f"  {st.a}->{st.b} {st.kind} ({st.role})"
             + (f", efficiency {st.efficiency}" if st.efficiency else "") for st in defn.steps]
     out += ["", "Parameters:"]
     if defn.params:

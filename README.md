@@ -58,20 +58,20 @@ contract are in `docs/spec.md`.
 
 ## Catalogue (v0.1)
 
-| name | system | steps (a→b: kind, role) | parameters | inputs needed | typical inputs |
+| name | system | steps (a->b: kind, role) | parameters | inputs needed | typical inputs |
 |---|---|---|---|---|---|
-| `otto` | closed | 1→2 isentropic comp; 2→3 isochoric heat_in; 3→4 isentropic exp; 4→1 isochoric heat_out | r_c = v1/v2 | 4 | T1, P1, r_c + one of T3, q_in, P3, T4 |
-| `diesel` | closed | 1→2 isentropic; 2→3 **isobaric** heat_in; 3→4 isentropic; 4→1 isochoric heat_out | r_c = v1/v2; cutoff = v3/v2 | 4 | T1, P1, r_c + one of cutoff, T3, q_in |
-| `dual` | closed | 1→2 isentropic; 2→3 isochoric heat_in; 3→4 isobaric heat_in; 4→5 isentropic; 5→1 isochoric heat_out | r_c = v1/v2; alpha = P3/P2; cutoff = v4/v3 | 5 | T1, P1, r_c, alpha, cutoff; or T1, P1, r_c, P3, T4; or ..., q_in |
-| `atkinson` | closed | 1→2 isentropic; 2→3 isochoric heat_in; 3→4 isentropic exp **to P4 = P1**; 4→1 **isobaric** heat_out | r_c = v1/v2; r_e = v4/v3 | 4 | T1, P1, r_c + one of T3, q_in, P3, r_e |
-| `brayton` | flow | 1→2 adiabatic comp (eta_c); 2→3 isobaric heat_in; 3→4 adiabatic exp (eta_t); 4→1 isobaric heat_out | r_p = P2/P1; eta_c = eta_t = 1 (defaults) | 4 (+2 defaulted) | T1, P1, r_p, T3 |
-| `brayton_regen` | flow | 1→2 adiabatic comp (eta_c); 2→3 isobaric internal (regenerator cold side); 3→4 isobaric heat_in; 4→5 adiabatic exp (eta_t); 5→6 isobaric internal (regenerator hot side); 6→1 isobaric heat_out | r_p = P2/P1; eta_c, eta_t (default 1); eps = (h3−h2)/(h5−h2); dT_regen = T5−T3 | 5 (+2 defaulted) | T1, P1, r_p, T4, eps (or dT_regen) |
+| `otto` | closed | 1->2 isentropic comp; 2->3 isochoric heat_in; 3->4 isentropic exp; 4->1 isochoric heat_out | r_c = v1/v2 | 4 | T1, P1, r_c + one of T3, q_in, P3, T4 |
+| `diesel` | closed | 1->2 isentropic; 2->3 **isobaric** heat_in; 3->4 isentropic; 4->1 isochoric heat_out | r_c = v1/v2; cutoff = v3/v2 | 4 | T1, P1, r_c + one of cutoff, T3, q_in |
+| `dual` | closed | 1->2 isentropic; 2->3 isochoric heat_in; 3->4 isobaric heat_in; 4->5 isentropic; 5->1 isochoric heat_out | r_c = v1/v2; alpha = P3/P2; cutoff = v4/v3 | 5 | T1, P1, r_c, alpha, cutoff; or T1, P1, r_c, P3, T4; or ..., q_in |
+| `atkinson` | closed | 1->2 isentropic; 2->3 isochoric heat_in; 3->4 isentropic exp **to P4 = P1**; 4->1 **isobaric** heat_out | r_c = v1/v2; r_e = v4/v3 | 4 | T1, P1, r_c + one of T3, q_in, P3, r_e |
+| `brayton` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric heat_in; 3->4 adiabatic exp (eta_t); 4->1 isobaric heat_out | r_p = P2/P1; eta_c = eta_t = 1 (defaults) | 4 (+2 defaulted) | T1, P1, r_p, T3 |
+| `brayton_regen` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric internal (regenerator cold side); 3->4 isobaric heat_in; 4->5 adiabatic exp (eta_t); 5->6 isobaric internal (regenerator hot side); 6->1 isobaric heat_out | r_p = P2/P1; eta_c, eta_t (default 1); eps = (h3−h2)/(h5−h2); dT_regen = T5−T3 | 5 (+2 defaulted) | T1, P1, r_p, T4, eps (or dT_regen) |
 
 Notes:
 - Dual numbering is 1..5. Cengel and Boles' state x is our 3, his 3 is our 4 and his 4 is our 5.
 - Atkinson MEP uses v_max = v4 (not v1), because r_e > r_c.
 - `brayton_regen` numbering equals Cengel and Boles 9-110, including the hidden states 2s and 5s.
-- Validity bounds: cutoff ≥ 1, alpha ≥ 1, r_c > 1, r_e > 1, r_p > 1, 0 < eta_c, eta_t ≤ 1, 0 ≤ eps ≤ 1.
+- Validity bounds: cutoff ≥ 1, alpha ≥ 1, r_c, r_e, r_p ≥ 1 at input but > 1 in effect (r = 1 is rejected as a zero-heat / zero-swept-volume / zero-expansion-work cycle), 0 < eta_c, eta_t ≤ 1, 0 ≤ eps ≤ 1. Atkinson's r_e > r_c is not a declared bound; a violation is caught by the step 2->3 validity check.
 - Your own cycle: `register_cycle(CycleDef(...))`, about 20 lines of data and no solver code (spec §8.1).
 
 ## Conventions
@@ -88,7 +88,7 @@ Notes:
 - **Names:** state properties `T1`, `P3`, `v2`, `u4`, `h3`, `s1` (hidden `T2s`); steps `q_23`, `w_12`; results
   `q_in`, `q_out`, `w_net`, `eta_th`, `mep` (closed), `bwr` (flow); parameters `r_c` (compression ratio),
   `r_e`, `cutoff`, `alpha`, `r_p`, `eta_c`, `eta_t`, `eps`, `dT_regen`. Names resolve exactly first, then
-  case-insensitively, then through aliases (`R_C`, `r` → `r_c`). Note that Cengel and Boles call the cutoff ratio
+  case-insensitively, then through aliases (`R_C`, `r` -> `r_c`). Note that Cengel and Boles call the cutoff ratio
   r_c; here `r_c` is always the compression ratio and the cutoff ratio is `cutoff`.
 
 ## Errors that say what to fix
@@ -105,7 +105,7 @@ UnderdeterminedError: atkinson needs 1 more input.
 
 >>> Cycle("otto", T1=300, P1=1e5, r_c=10, T3=500)
 InvalidCycleError: otto: the solved cycle is not physically valid:
-  - step 2→3 (isochoric, heat_in) has q = -181.9 kJ/kg < 0: T3 = 500 K is below T2 = 753.57 K. Raise T3 / q_in or lower r_c.
+  - step 2->3 (isochoric, heat_in) has q = -181.9 kJ/kg < 0: T3 = 500 K is below T2 = 753.57 K. Raise T3 / q_in or lower r_c.
   ...
 ```
 
@@ -133,11 +133,11 @@ numbers. Full list and tolerances: `docs/spec.md` §15.1.
 ## Migrating from the old prototype (the "Atkinson fix")
 
 The old `AtkinsonSolver` actually computed a **Diesel** cycle (isobaric heat addition, isochoric heat rejection).
-`atkinson` is now the real ideal Atkinson cycle: isochoric heat addition 2→3, isentropic expansion to P4 = P1 (so
-r_e = v4/v3 > r_c), isobaric heat rejection 4→1. What the old code computed is `diesel`, unchanged:
+`atkinson` is now the real ideal Atkinson cycle: isochoric heat addition 2->3, isentropic expansion to P4 = P1 (so
+r_e = v4/v3 > r_c), isobaric heat rejection 4->1. What the old code computed is `diesel`, unchanged:
 
-- old DESIGN mode → `Cycle("diesel", T1=..., P1=..., r_c=..., T3=... or q_in=...)`
-- old EFFICIENCY mode → `optimise("diesel", vary={"r_c": (5, 60)}, maximise="eta_th", fixed={...}, limits={"P2_max": ...})`
+- old DESIGN mode -> `Cycle("diesel", T1=..., P1=..., r_c=..., T3=... or q_in=...)`
+- old EFFICIENCY mode -> `optimise("diesel", vary={"r_c": (5, 60)}, maximise="eta_th", fixed={...}, limits={"P2_max": ...})`
 
 See `examples/old_modes_migrated.py`. The old input interpreter, `BaseCycle` and `AtkinsonCycle` classes are gone;
 the general solver replaces the per-cycle mode patterns.

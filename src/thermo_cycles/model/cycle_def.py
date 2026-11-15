@@ -52,7 +52,7 @@ class CycleDef:
 
     ``regenerators`` declares the regenerator stream pairs: one entry ``((a_c, b_c), (a_h, b_h))`` per
     regenerator, the cold side first (the step a_c -> b_c whose stream the regenerator heats), then the hot side
-    (a_h -> b_h, the stream it cools). Steps are named by their state numbers, as in every message ("2→3"),
+    (a_h -> b_h, the stream it cools). Steps are named by their state numbers, as in every message ("2->3"),
     not by position: a pair stays right when steps are added or the loop is renumbered, and a typo is caught
     because (a, b) must be a step of the cycle. Every step with role ``internal`` must be in exactly one pair,
     and pair members must be internal steps (``validate_cycle``). Example, ``brayton_regen``:
@@ -257,22 +257,22 @@ def _validate_regenerators(defn: CycleDef, steps: "tuple[StepDef, ...]") -> None
             _fail(nm, f"{where}: state numbers must be integers")
         cold, hot = pair
         if cold == hot:
-            _fail(nm, f"{where}: cold and hot side are the same step {cold[0]}→{cold[1]}")
+            _fail(nm, f"{where}: cold and hot side are the same step {cold[0]}->{cold[1]}")
         for side, (a, b) in (("cold", cold), ("hot", hot)):
             st = by_ab.get((a, b))
             if st is None:
-                _fail(nm, f"{where}: {side} side step {a}→{b} is not a step of the cycle "
-                          f"(steps: {', '.join(f'{s.a}→{s.b}' for s in steps)})")
+                _fail(nm, f"{where}: {side} side step {a}->{b} is not a step of the cycle "
+                          f"(steps: {', '.join(f'{s.a}->{s.b}' for s in steps)})")
             if st.role != "internal":
-                _fail(nm, f"{where}: {side} side step {a}→{b} has role {st.role!r}, not 'internal'")
+                _fail(nm, f"{where}: {side} side step {a}->{b} has role {st.role!r}, not 'internal'")
             if (a, b) in seen:
-                _fail(nm, f"step {a}→{b} is in more than one regenerator pair (regenerators[{seen[(a, b)]}] and "
+                _fail(nm, f"step {a}->{b} is in more than one regenerator pair (regenerators[{seen[(a, b)]}] and "
                           f"regenerators[{i}])")
             seen[(a, b)] = i
     for st in steps:
         if st.role == "internal" and (st.a, st.b) not in seen:
             others = [f"({s.a}, {s.b})" for s in steps if s.role == "internal" and s is not st]
-            _fail(nm, f"internal step {st.a}→{st.b} is not in any declared regenerator pair. Declare it with "
+            _fail(nm, f"internal step {st.a}->{st.b} is not in any declared regenerator pair. Declare it with "
                       f"regenerators=(((a_c, b_c), (a_h, b_h)),), cold side (the heated stream) first"
                       + (f"; other internal steps: {', '.join(others)}" if others else "") + ".")
 

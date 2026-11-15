@@ -128,7 +128,7 @@ def _fmt(var: str, x: float) -> str:
     if var.startswith("s"):
         return f"{num(x)} J/(kg K)"
     if var.startswith("v"):
-        return f"{x:.4g} m³/kg"
+        return f"{x:.4g} m^3/kg"
     return f"{x:.4g}"
 
 
@@ -583,7 +583,7 @@ def _no_solution(ctx, k, plan, xs, gs):
 
 def _reach_message(ctx, k, plan):
     """Phrase a missing root as an input out of reach (spec 9.5: "w_net = 400 kJ/kg exceeds what T1, P1,
-    T3 allow (max ≈ 329 kJ/kg near r_c = 7.48)").
+    T3 allow (max ~ 329 kJ/kg near r_c = 7.48)").
 
     Free one input x that feeds the block, fix the block's report variable p instead, and sweep p over its
     scan range with nested solves. If the given x lies outside the swept range of x, say so.
@@ -630,11 +630,11 @@ def _reach_sweep(ctx, p, anc, order, lo, hi, spacing, sub):
 
         if given > ymax[0]:
             yb, pb = _refine(implied, ps, ymax[2], +1)
-            return (f"{x} = {_fmt(x, given)} exceeds what {others} allow (max ≈ {_fmt(x, yb)} near "
+            return (f"{x} = {_fmt(x, given)} exceeds what {others} allow (max ~ {_fmt(x, yb)} near "
                     f"{p} = {pb:.3g}{edge(ymax[2])}).")
         if given < ymin[0]:
             yb, pb = _refine(implied, ps, ymin[2], -1)
-            return (f"{x} = {_fmt(x, given)} is below what {others} allow (min ≈ {_fmt(x, yb)} near "
+            return (f"{x} = {_fmt(x, given)} is below what {others} allow (min ~ {_fmt(x, yb)} near "
                     f"{p} = {pb:.3g}{edge(ymin[2])}).")
     return None
 

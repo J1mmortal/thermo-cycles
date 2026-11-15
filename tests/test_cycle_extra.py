@@ -95,15 +95,15 @@ def test_review_focus_3_message_lists_every_problem():
     with pytest.raises(InvalidCycleError) as ei:
         Cycle("otto", T1=300, P1=1e5, r_c=10, T3=600)
     p = ei.value.problems
-    assert p[0] == ("step 2→3 (isochoric, heat_in) has q = -110.2 kJ/kg < 0: T3 = 600 K is below T2 = 753.57 K. "
+    assert p[0] == ("step 2->3 (isochoric, heat_in) has q = -110.2 kJ/kg < 0: T3 = 600 K is below T2 = 753.57 K. "
                     "Raise T3 / q_in or lower r_c.")
-    assert any(m.startswith("step 4→1 (isochoric, heat_out) has q = +43.9 kJ/kg > 0") for m in p)
+    assert any(m.startswith("step 4->1 (isochoric, heat_out) has q = +43.9 kJ/kg > 0") for m in p)
     assert any(m.startswith("q_in = -110.2 kJ/kg is not > 0") for m in p)
     assert all(m in str(ei.value) for m in p)
 
 
 def test_check_warn_and_off():
-    with pytest.warns(CycleValidityWarning, match="step 2→3"):
+    with pytest.warns(CycleValidityWarning, match="step 2->3"):
         c = Cycle("otto", T1=300, P1=1e5, r_c=10, T3=600, check="warn")
     assert c.steps[1].q < 0
     with warnings.catch_warnings():
@@ -121,10 +121,10 @@ def test_heat_in_zero_is_valid_within_tolerance():
     q_in = vals["q_in"]
     for q, bad in ((0.0, False), (-0.5e-9 * q_in, False), (-2e-9 * q_in, True)):
         v = dict(vals, q_23=q)
-        assert any(m.startswith("step 2→3") for m in _problems(OTTO, v)) is bad, q
+        assert any(m.startswith("step 2->3") for m in _problems(OTTO, v)) is bad, q
     for q, bad in ((0.0, False), (0.5e-9 * q_in, False), (2e-9 * q_in, True)):
         v = dict(vals, q_41=q)
-        assert any(m.startswith("step 4→1") for m in _problems(OTTO, v)) is bad, q
+        assert any(m.startswith("step 4->1") for m in _problems(OTTO, v)) is bad, q
 
 
 def test_compression_expansion_state_and_bound_rules():
@@ -132,13 +132,13 @@ def test_compression_expansion_state_and_bound_rules():
     vals = _values(c)
     assert _problems(OTTO, vals) == []
     p = _problems(OTTO, dict(vals, P2=0.9e5, w_12=1.0))
-    assert any("step 1→2 (isentropic, compression) has P2 = 90.0 kPa <= P1 = 100.0 kPa" in m for m in p)
-    assert any("step 1→2 (isentropic, compression) has w = 0.0 kJ/kg >= 0" in m for m in p)
+    assert any("step 1->2 (isentropic, compression) has P2 = 90.0 kPa <= P1 = 100.0 kPa" in m for m in p)
+    assert any("step 1->2 (isentropic, compression) has w = 0.0 kJ/kg >= 0" in m for m in p)
     p = _problems(OTTO, dict(vals, P4=vals["P3"] * 2, w_34=-5.0))
-    assert any("step 3→4 (isentropic, expansion) has P4" in m and ">= P3" in m for m in p)
-    assert any("step 3→4 (isentropic, expansion) has w = -0.0 kJ/kg <= 0" in m for m in p)
+    assert any("step 3->4 (isentropic, expansion) has P4" in m and ">= P3" in m for m in p)
+    assert any("step 3->4 (isentropic, expansion) has w = -0.0 kJ/kg <= 0" in m for m in p)
     p = _problems(OTTO, dict(vals, T2=-1.0, v4=math.nan))
-    assert "state 2: T2 = -1 K is not > 0." in p and "state 4: v4 = nan m³/kg is not > 0." in p
+    assert "state 2: T2 = -1 K is not > 0." in p and "state 4: v4 = nan m^3/kg is not > 0." in p
     p = _problems(OTTO, dict(vals, r_c=0.5))
     assert any(m.startswith("parameter r_c = 0.5 is outside its bounds [1, inf]") for m in p)
 

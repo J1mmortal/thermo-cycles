@@ -95,7 +95,7 @@ def test_plausibility_messages():
     with pytest.warns(InputPlausibilityWarning) as rec:
         resolve_inputs(OTTO, {"T1": 25})
     assert str(rec[0].message).startswith(
-        "T1 = 25 K: did you mean 25 °C (298.15 K)? thermo_cycles works in SI")
+        "T1 = 25 K: did you mean 25 deg C (298.15 K)? thermo_cycles works in SI")
     # boundaries: exactly 1000 Pa and 100 K do not warn; the check is for T and P only
     with warnings.catch_warnings():
         warnings.simplefilter("error")

@@ -10,7 +10,7 @@ def test_describe_numbered_steps_and_roles_for_all_cycles():
         text = tc.describe(name)
         assert defn.title in text
         for st in defn.steps:
-            assert f"{st.a}→{st.b} {st.kind} ({st.role})" in text
+            assert f"{st.a}->{st.b} {st.kind} ({st.role})" in text
         for p in defn.params:
             assert p.name in text and p.description in text
         for ref in defn.references:

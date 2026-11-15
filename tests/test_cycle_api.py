@@ -19,7 +19,7 @@ def test_with_inputs_does_not_mutate():
         c.states[1].T = 1
 
 def test_heat_addition_below_T2_names_step():          # Review Focus 3
-    with pytest.raises(InvalidCycleError, match=r"2.3"):
+    with pytest.raises(InvalidCycleError, match=r"2->3"):
         Cycle("otto", T1=300, P1=1e5, r_c=10, T3=600)
     with pytest.warns(CycleValidityWarning):
         Cycle("otto", T1=300, P1=1e5, r_c=10, T3=600, check="warn")

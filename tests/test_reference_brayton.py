@@ -58,7 +58,7 @@ def test_regenerator_message_names_steps_and_fix():
     with pytest.raises(InvalidCycleError) as ei:
         Cycle("brayton_regen", T1=300, P1=1e5, r_p=40, T4=1200, eps=0.8)
     msg = str(ei.value)
-    assert "2→3" in msg and "5→6" in msg and "r_p" in msg and "brayton" in msg
+    assert "2->3" in msg and "5->6" in msg and "r_p" in msg and "brayton" in msg
 
 
 def test_regenerator_check_warn_returns_states():
@@ -105,4 +105,4 @@ def test_internal_steps_must_cancel():
     defn, vals = get_cycle("brayton_regen"), c._cs.values
     assert validity_problems(defn, vals, c.steps) == []
     steps = tuple(dataclasses.replace(s, q=s.q + 1e3) if (s.a, s.b) == (5, 6) else s for s in c.steps)
-    assert any("internal steps 2→3, 5→6" in p for p in validity_problems(defn, vals, steps))
+    assert any("internal steps 2->3, 5->6" in p for p in validity_problems(defn, vals, steps))

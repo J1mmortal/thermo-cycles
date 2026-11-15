@@ -22,8 +22,8 @@ def registry(monkeypatch):
 
 
 def _hot_first(**changes) -> CycleDef:
-    """brayton_regen renumbered to start at the turbine exit, so the hot side (1→2) comes before the cold side
-    (4→5) in step order. Old -> new numbering: 5->1, 6->2, 1->3, 2->4, 3->5, 4->6."""
+    """brayton_regen renumbered to start at the turbine exit, so the hot side (1->2) comes before the cold side
+    (4->5) in step order. Old -> new numbering: 5->1, 6->2, 1->3, 2->4, 3->5, 4->6."""
     base = dict(
         name="regen_hot_first", title="regenerative Brayton, hot side listed first", aliases=(), system="flow",
         states=(1, 2, 3, 4, 5, 6),
@@ -70,7 +70,7 @@ def test_hot_side_first_invalid_regenerator_is_reported_with_declared_sides(regi
     with pytest.raises(InvalidCycleError, match="regenerator") as ei:
         Cycle("regen_hot_first", T3=300, P3=1e5, r_p=40, T6=1200, eps=0.8)
     msg = next(p for p in ei.value.problems if p.startswith("regenerator"))
-    assert "cold side 4→5, hot side 1→2" in msg
+    assert "cold side 4->5, hot side 1->2" in msg
     assert "T1" in msg and "T4" in msg and "r_p" in msg
 
 
@@ -84,10 +84,10 @@ def test_declaring_the_sides_the_wrong_way_round_is_caught(registry):
 # --- definition errors ------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("regens, match", [
-    ((), "internal step 1→2 is not in any declared regenerator pair"),
-    ((((4, 5), (2, 3)),), "step 2→3 has role 'heat_out', not 'internal'"),
-    ((((4, 5), (7, 8)),), "step 7→8 is not a step of the cycle"),
-    ((((4, 5), (4, 5)),), "cold and hot side are the same step 4→5"),
+    ((), "internal step 1->2 is not in any declared regenerator pair"),
+    ((((4, 5), (2, 3)),), "step 2->3 has role 'heat_out', not 'internal'"),
+    ((((4, 5), (7, 8)),), "step 7->8 is not a step of the cycle"),
+    ((((4, 5), (4, 5)),), "cold and hot side are the same step 4->5"),
     ((((4, 5), (1, 2)), ((1, 2), (4, 5))), "in more than one regenerator pair"),
     ((((4, 5),),), "must be a pair"),
     (((4, 5), (1, 2)), "must be a pair"),
@@ -107,6 +107,6 @@ def test_regenerators_on_a_cycle_without_internal_steps():
 
 def test_undeclared_internal_step_fails_at_registration(registry):
     defn = dataclasses.replace(get_cycle("brayton_regen"), name="regen_undeclared", regenerators=())
-    with pytest.raises(ValueError, match=r"internal step 2→3 is not in any declared regenerator pair.*"
+    with pytest.raises(ValueError, match=r"internal step 2->3 is not in any declared regenerator pair.*"
                                          r"regenerators="):
         register_cycle(defn)

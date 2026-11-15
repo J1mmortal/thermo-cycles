@@ -160,7 +160,7 @@ def test_no_solution_message_names_max_and_r_c():
         solve_numeric(OTTO, {"T1": 300.0, "P1": 1e5, "T3": 1500.0, "w_net": 400e3})
     msg = str(ei.value)
     assert "w_net = 400 kJ/kg exceeds what T1, P1, T3 allow" in msg
-    assert "max ≈ 329 kJ/kg near r_c = 7.48" in msg                      # 328.87 kJ/kg at r_c = 5^1.25
+    assert "max ~ 329 kJ/kg near r_c = 7.48" in msg                      # 328.87 kJ/kg at r_c = 5^1.25
     assert "r_c" in ei.value.variables
 
 
@@ -169,7 +169,7 @@ def test_no_solution_efficiency_above_one():
     with pytest.raises(NoSolutionError) as ei:
         solve_numeric(OTTO, {"T1": 300.0, "P1": 1e5, "q_in": 1e6, "eta_th": 1.2})
     # max over the r_c scan range 1..1e4 is 1 - 1e4^-0.4 = 0.97488, reached at the range edge
-    assert "eta_th = 1.2 exceeds what T1, P1, q_in allow (max ≈ 0.9749 near r_c = 1e+04, at the edge" in str(ei.value)
+    assert "eta_th = 1.2 exceeds what T1, P1, q_in allow (max ~ 0.9749 near r_c = 1e+04, at the edge" in str(ei.value)
 
 
 # --- explicit-inverse failures -------------------------------------------------------------------------

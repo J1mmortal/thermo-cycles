@@ -122,7 +122,7 @@ thermo-cycles/
     `bwr` (flow cycles).
   - catalogue parameters: `r_c`, `r_e`, `cutoff`, `alpha`, `r_p`, `eta_c`, `eta_t`, `eps`, `dT_regen`.
   - Look-up order: exact name first, then a unique case-insensitive match (so the old upper-case `R_C` and `T3`
-    still work), then the alias table (`r` → `r_c`). Anything else raises `UnknownInputError` with difflib
+    still work), then the alias table (`r` -> `r_c`). Anything else raises `UnknownInputError` with difflib
     suggestions.
 - **Naming clash to note:** Cengel & Boles call the *cutoff* ratio r_c and the dual-cycle constant-volume
   pressure ratio r_p. This package keeps Jesper's `r_c` = compression ratio, which is also the brief's usage. It
@@ -418,7 +418,7 @@ class CycleDef: name; title; aliases; system: Literal["closed","flow"]; states: 
 
 `regenerators` declares the regenerator stream pairs, one entry per regenerator: `((a_c, b_c), (a_h, b_h))`. The
 cold-side step comes first (the stream the regenerator heats), then the hot-side step (the stream it cools). Steps
-are named by their state numbers, as in every message ("2→3"), not by position. A pair therefore cannot be off by
+are named by their state numbers, as in every message ("2->3"), not by position. A pair therefore cannot be off by
 one, it stays right when a loop is renumbered or extended, and a typo is caught because (a, b) must be a step.
 Example: `brayton_regen` has `regenerators=(((2, 3), (5, 6)),)`. The §9.7 regenerator rule uses these sides,
 never the step order.
@@ -438,14 +438,14 @@ parameter, which has a default. Each `extra_relation` takes away one.
 
 ### 8.2 Catalogue v1
 
-| name | system | steps (a→b: kind, role) | parameters (definition) | DOF | typical inputs |
+| name | system | steps (a->b: kind, role) | parameters (definition) | DOF | typical inputs |
 |---|---|---|---|---|---|
-| `otto` | closed | 1→2 isentropic comp; 2→3 isochoric heat_in; 3→4 isentropic exp; 4→1 isochoric heat_out | r_c = v1/v2 | 4 | T1,P1,r_c + one of T3, q_in, P3, T4 |
-| `diesel` | closed | 1→2 isentropic; 2→3 **isobaric** heat_in; 3→4 isentropic; 4→1 isochoric heat_out | r_c = v1/v2; cutoff = v3/v2 | 4 | T1,P1,r_c + one of cutoff, T3, q_in |
-| `dual` | closed | 1→2 isentropic; 2→3 isochoric heat_in; 3→4 isobaric heat_in; 4→5 isentropic; 5→1 isochoric heat_out | r_c = v1/v2; alpha = P3/P2; cutoff = v4/v3 | 5 | T1,P1,r_c,alpha,cutoff; or T1,P1,r_c,P3,T4; or ...,q_in |
-| `atkinson` | closed | 1→2 isentropic; 2→3 isochoric heat_in; 3→4 isentropic exp **to P4 = P1**; 4→1 **isobaric** heat_out | r_c = v1/v2; r_e = v4/v3 | 4 | T1,P1,r_c + one of T3, q_in, P3, r_e |
-| `brayton` | flow | 1→2 adiabatic comp (eta_c); 2→3 isobaric heat_in; 3→4 adiabatic exp (eta_t); 4→1 isobaric heat_out | r_p = P2/P1; eta_c = 1, eta_t = 1 (defaults) | 4 (+2 defaulted) | T1,P1,r_p,T3 |
-| `brayton_regen` | flow | 1→2 adiabatic comp (eta_c); 2→3 isobaric internal (regen cold side); 3→4 isobaric heat_in; 4→5 adiabatic exp (eta_t); 5→6 isobaric internal (regen hot side); 6→1 isobaric heat_out | r_p = P2/P1; eta_c, eta_t (defaults 1); eps = (h3−h2)/(h5−h2); dT_regen = T5−T3; extra: h3−h2 = h5−h6; regenerators = ((2,3), (5,6)) | 5 (+2 defaulted) | T1,P1,r_p,T4,eps (or dT_regen) |
+| `otto` | closed | 1->2 isentropic comp; 2->3 isochoric heat_in; 3->4 isentropic exp; 4->1 isochoric heat_out | r_c = v1/v2 | 4 | T1,P1,r_c + one of T3, q_in, P3, T4 |
+| `diesel` | closed | 1->2 isentropic; 2->3 **isobaric** heat_in; 3->4 isentropic; 4->1 isochoric heat_out | r_c = v1/v2; cutoff = v3/v2 | 4 | T1,P1,r_c + one of cutoff, T3, q_in |
+| `dual` | closed | 1->2 isentropic; 2->3 isochoric heat_in; 3->4 isobaric heat_in; 4->5 isentropic; 5->1 isochoric heat_out | r_c = v1/v2; alpha = P3/P2; cutoff = v4/v3 | 5 | T1,P1,r_c,alpha,cutoff; or T1,P1,r_c,P3,T4; or ...,q_in |
+| `atkinson` | closed | 1->2 isentropic; 2->3 isochoric heat_in; 3->4 isentropic exp **to P4 = P1**; 4->1 **isobaric** heat_out | r_c = v1/v2; r_e = v4/v3 | 4 | T1,P1,r_c + one of T3, q_in, P3, r_e |
+| `brayton` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric heat_in; 3->4 adiabatic exp (eta_t); 4->1 isobaric heat_out | r_p = P2/P1; eta_c = 1, eta_t = 1 (defaults) | 4 (+2 defaulted) | T1,P1,r_p,T3 |
+| `brayton_regen` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric internal (regen cold side); 3->4 isobaric heat_in; 4->5 adiabatic exp (eta_t); 5->6 isobaric internal (regen hot side); 6->1 isobaric heat_out | r_p = P2/P1; eta_c, eta_t (defaults 1); eps = (h3−h2)/(h5−h2); dT_regen = T5−T3; extra: h3−h2 = h5−h6; regenerators = ((2,3), (5,6)) | 5 (+2 defaulted) | T1,P1,r_p,T4,eps (or dT_regen) |
 
 Notes:
 - Dual numbering is 1..5. Cengel's state x is our 3, his 3 is our 4 and his 4 is our 5. The reference tests map
@@ -453,9 +453,12 @@ Notes:
 - Atkinson MEP uses v_max = v4 (not v1), because r_e > r_c.
 - The brayton_regen numbering equals Cengel 9-110's, including the hidden states 2s and 5s. `eps` and `dT_regen`
   are both defined parameters, so the user gives either one.
-- `brayton_regen` declares its regenerator as `regenerators=(((2, 3), (5, 6)),)`: cold side 2→3, hot side 5→6.
-- Validity bounds: cutoff ≥ 1, alpha ≥ 1, r_c > 1, r_e > 1, r_p > 1, 0 < eta_c, eta_t ≤ 1, 0 ≤ eps ≤ 1. They
-  feed the post-solve checks (§9.7) and the scan ranges (§9.5).
+- `brayton_regen` declares its regenerator as `regenerators=(((2, 3), (5, 6)),)`: cold side 2->3, hot side 5->6.
+- Validity bounds: cutoff ≥ 1, alpha ≥ 1, r_c, r_e, r_p ≥ 1 at input but > 1 in effect (r = 1 is rejected as a
+  zero-heat / zero-swept-volume / zero-expansion-work cycle, §9.7; the code keeps the closed bounds), 0 < eta_c,
+  eta_t ≤ 1, 0 ≤ eps ≤ 1. They feed the post-solve checks (§9.7) and the scan ranges (§9.5).
+- Atkinson's r_e > r_c is not a declared bound (bounds are per parameter). A violation is caught by the step 2->3
+  validity check.
 
 ### 8.3 Later cycles: what each one needs
 
@@ -465,7 +468,7 @@ Notes:
 | Ericsson (isothermal + isobaric regeneration) | catalogue entry only. |
 | Miller / over-expanded Atkinson (expansion to P4 > P1, then isochoric + isobaric rejection) | catalogue entry with 5 states. |
 | Rankine (pump, boiler, turbine, condenser) | `CoolPropFluid` with `x` as a property; inputs such as `x1=0` (saturated liquid at pump inlet) and `x3`; `saturation_curve()` for the dome on T-s; pump work on liquid. The step kinds are already two-phase-safe (§7.3). |
-| Vapour-compression refrigeration / heat pump | CoolProp plus the `isenthalpic` step kind; `CycleDef.kind = "refrigeration"` → results report COP_R / COP_HP instead of eta_th, and Carnot COP instead of eta_Carnot. |
+| Vapour-compression refrigeration / heat pump | CoolProp plus the `isenthalpic` step kind; `CycleDef.kind = "refrigeration"` -> results report COP_R / COP_HP instead of eta_th, and Carnot COP instead of eta_Carnot. |
 | Brayton with intercooling / reheat | catalogue entries (more states); no new code. |
 
 ## 9. The general solver
@@ -477,7 +480,7 @@ Notes:
 | source | variables | relations |
 |---|---|---|
 | each state k (main and hidden) | T_k, P_k, v_k, u_k, h_k, s_k | the fluid's 4 relations (ideal gas: sparse and explicit; generic: dense closure) |
-| each step a→b | q_ab, w_ab | the kind's defining relation(s) + 2 energy relations (§7.1) |
+| each step a->b | q_ab, w_ab | the kind's defining relation(s) + 2 energy relations (§7.1) |
 | each parameter | the parameter | its definition (e.g. r_c·v2 − v1 = 0) |
 | cycle | q_in, q_out, w_net, eta_th, mep or bwr | q_in = Σq(heat_in); q_out = −Σq(heat_out); w_net = Σw; eta_th·q_in = w_net; mep·(v_max−v_min) = w_net; bwr·w_expansion = −w_compression |
 | catalogue extras | | e.g. h3 − h2 − (h5 − h6) = 0 |
@@ -588,9 +591,9 @@ rather than options.
    kinds (T 1..1e5 K, P 1..1e10 Pa, v 1e-6..1e4 m³/kg, ratios 1..1e4, efficiencies 1e-6..1). For signed kinds
    (u, h, s, q, w) the scan is asinh-spaced over ±1e9. Every sign change is then refined with `brentq`
    (xtol 1e-12 relative).
-   - 0 roots → `NoSolutionError`. It names the inputs involved, e.g. "w_net = 400 kJ/kg exceeds what T1, P1, T3
+   - 0 roots -> `NoSolutionError`. It names the inputs involved, e.g. "w_net = 400 kJ/kg exceeds what T1, P1, T3
      allow (max ≈ 329 kJ/kg near r_c = 7.48)". The maximum |g| sample is reported when it can be found.
-   - more than 1 root → each candidate solution is completed and checked against §9.7. If exactly one is valid it
+   - more than 1 root -> each candidate solution is completed and checked against §9.7. If exactly one is valid it
      is used. Otherwise `AmbiguousSolutionError(variable, candidates)` is raised, for example "r_c = 2.736 or
      20.43; pass r_c explicitly". This is the classic case of w_net given at fixed T_max.
 4. **Newton fallback** for blocks that one tear cannot reduce: `scipy.optimize.root(method="hybr")` on the scaled
@@ -643,12 +646,12 @@ controls the final report.
   returned. A divide-by-zero in one of these quotients during the solve gives the same error, not
   `NoSolutionError`.
 - Parameters inside their `bounds`.
-- Regenerator, for each pair declared in `regenerators` (cold side a_c→b_c, hot side a_h→b_h): T(a_h) ≥ T(b_c),
+- Regenerator, for each pair declared in `regenerators` (cold side a_c->b_c, hot side a_h->b_h): T(a_h) ≥ T(b_c),
   T(b_h) ≥ T(a_c) and T(a_h) ≥ T(a_c), each with a relative tolerance of 1e-9. For brayton_regen these are
   T5 ≥ T3, T6 ≥ T2 and T5 ≥ T2. The third condition is needed because at eps = 1 the first two hold with
   equality even when T5 < T2. The internal steps' q must sum to zero within 1e-6 × max(q_in, the largest
   internal |q|).
-- Message example: "step 2→3 (isochoric, heat_in) has q = −120.4 kJ/kg < 0: T3 = 600 K is below T2 = 689.2 K.
+- Message example: "step 2->3 (isochoric, heat_in) has q = −120.4 kJ/kg < 0: T3 = 600 K is below T2 = 689.2 K.
   Raise T3 / q_in or lower r_c."
 
 ### 9.8 Input validation
@@ -661,7 +664,7 @@ Before analysis:
 - Range: an input outside the solvable range is an `InputError`, not a warning (T outside 1..1e5 K, P outside
   1..1e10 Pa, v outside 1e-6..1e4 m³/kg, eta_th > 1, r_c < 1, ...: the scan ranges of §9.5 and the parameter
   `bounds`). The message names the input and its range.
-- Plausibility: given P < 1 000 Pa or T < 100 K → `InputPlausibilityWarning` ("P1 = 100 Pa: did you mean
+- Plausibility: given P < 1 000 Pa or T < 100 K -> `InputPlausibilityWarning` ("P1 = 100 Pa: did you mean
   100 kPa? thermo_cycles works in SI").
 
 ### 9.9 Why this replaces the mode patterns
@@ -688,11 +691,12 @@ All results are computed from the solved values:
 ## 11. Margins
 
 `limits` maps a key to a limit value. Key grammar: `<name>_max` or `<name>_min`, where `<name>` is one of:
-- a property letter T, P, v, u, h, s → the extreme over all main and hidden states (e.g. `T_max`, `P_max`);
-- any solved variable → that value (`T3_max`, `P2_max`, `eta_th_min`, `w_net_min`, `r_e_max`, `mep_max`);
+- a property letter T, P, v, u, h, s -> the extreme over all main and hidden states (e.g. `T_max`, `P_max`);
+- any solved variable -> that value (`T3_max`, `P2_max`, `eta_th_min`, `w_net_min`, `r_e_max`, `mep_max`);
 - `eta_ii_min`, `eta_carnot_max`.
 
-Unknown keys raise `UnknownInputError` at construction.
+Property letters (`T_max`) are case-exact; other names are case-insensitive. Unknown keys raise
+`UnknownInputError` at construction.
 
 ```python
 @dataclass(frozen=True)
@@ -700,11 +704,11 @@ class Margin:
     key: str; kind: Literal["max", "min"]; limit: float; value: float
     where: int | str | None                 # state id holding the extreme, or None
     margin: float                           # max: limit - value ; min: value - limit (same unit as the limit)
-    margin_pct: float                       # 100 * margin / |limit|
+    margin_pct: float                       # 100 * margin / |limit|; nan for a zero limit (undefined)
     ok: bool                                # margin >= 0
 
 class MarginReport(Mapping[str, Margin]):
-    violated: tuple[Margin, ...]; ok: bool; worst: Margin | None     # lowest margin_pct
+    violated: tuple[Margin, ...]; ok: bool; worst: Margin | None     # lowest margin_pct; a nan margin_pct ranks last
     second_law: SecondLaw   # eta_th, eta_carnot, eta_ii, gap = eta_carnot - eta_th  (always present)
     def table(self) -> str
 ```
@@ -730,13 +734,15 @@ class OptimisationResult:
 - The objective is a solved-variable or result name (`eta_th`, `w_net`, `mep`, `eta_ii`, `bwr`, any state prop),
   or a callable `f(cycle) -> float`. Exactly one of `maximise` or `minimise` must be given.
 - A point is **infeasible** when the solve raises (no solution, invalid cycle) or a limit is violated.
-- **1 variable:** evaluate `grid` points (log-spaced if hi/lo > 10). Take the best feasible point. If both
-  neighbours are feasible, refine with `minimize_scalar(method="bounded")` between them. If a neighbour is
+- **1 variable:** evaluate `grid` points (log-spaced if hi/lo > 10). Take the best feasible point. Refine
+  with `minimize_scalar(method="bounded")` over the feasible neighbouring interval (both neighbours feasible: both
+  sides; only one feasible: that side). If a neighbour is
   infeasible because of a limit, find the boundary with `brentq` on that limit's margin between the feasible and
   infeasible point. The better of the boundary point and the interior refinement wins.
 - **2 or more variables:** a Sobol sample (`scipy.stats.qmc`, 64·d points, `seed`), then SLSQP from the 3 best
   feasible samples, with limits as inequality constraints margin/|limit| ≥ 0. The best result wins.
-- No feasible point raises `NoFeasiblePointError`. Its message lists each limit with the smallest violation found.
+- No feasible point raises `NoFeasiblePointError`. Its message lists each limit with the smallest violation found. `NoFeasiblePointError.closest` is `dict[limit key, Margin]` (the
+  least-violated margin per limit), or `None` when no point solved.
 - The optimum's states are the optimum's. This fixes the old bug where the stored states belonged to the last grid
   point.
 
@@ -804,7 +810,7 @@ Cengel's 1.005/0.718 by ≤ 0.07 %, so tolerances are rtol 3e-3 unless stated.
 | A1 | atkinson | Rajput, Engineering Thermodynamics, Example 13.31 (book p. 659-660) | renumbered to 1 = start of compression: T1 300 K, P1 1 bar, P2 4 bar, P3 16 bar; fluid `IdealGas(cp=920, gamma=1.22)` | T2 385.2 K, T3 1540.8 K, T4 934.9 K (rtol 1e-3); q_out 584.1 kJ/kg (rtol 3e-3); q_in 866.7 kJ/kg (rtol 1e-2); w 282.6 kJ/kg (rtol 2e-2); eta 0.326 (rtol 1.5e-2). The book uses k = 1.22 but cp/cv = 0.92/0.75 = 1.2267, so it is internally inconsistent; the looser heat tolerances are the documented price of that. This case also exercises pressure-only inputs (no r_c) |
 | B1 | brayton | thermostate docs, "Cold-Air Standard Brayton Cycle Example" | r_p 10, T1 300 K, P1 1 bar, T3 1400 K; gamma 1.401662 (inferred from its printed T2) | T2 580.34 K, T4 723.71 K, bwr 0.4145, eta 0.4831 |
 | B2 | brayton_regen | Cengel & Boles 7e SM 9-110 | r_p 8, T1 293 K, T4 1073 K, eta_c 0.87, eta_t 0.93, **dT_regen 10 K** | T2s 530.8, T2 566.3, T5s 592.3, T5 625.9, T3 615.9, T6 576.3 K; w_net 174.7 kJ/kg; q_in = 394.4 kW / 0.8586 kg/s = 459.4 kJ/kg; also eps = 0.83252 as input gives the same states |
-| C1 | custom 3-step (via `register_cycle`) | Cengel & Boles 7e SM 9-24 (R 0.3, cv 0.7 kJ/kg·K; its "Properties" line misprints cv = 0.3) | isentropic 1→2, isobaric 2→3 heat_in, isochoric 3→1 heat_out; r = 5, T1 293 K, fluid `IdealGas(R=300, cv=700)` | T2 584.4 K, T3 2922 K, w_12 −204.0, w_23 701.3, q_23 2338, q_31 −1840.3 kJ/kg, eta 0.213 |
+| C1 | custom 3-step (via `register_cycle`) | Cengel & Boles 7e SM 9-24 (R 0.3, cv 0.7 kJ/kg·K; its "Properties" line misprints cv = 0.3) | isentropic 1->2, isobaric 2->3 heat_in, isochoric 3->1 heat_out; r = 5, T1 293 K, fluid `IdealGas(R=300, cv=700)` | T2 584.4 K, T3 2922 K, w_12 −204.0, w_23 701.3, q_23 2338, q_31 −1840.3 kJ/kg, eta 0.213 |
 
 The Cengel & Boles solution-manual pages were read from public course mirrors (Simon Fraser University ENSC 461 and
 Old Dominion University MET 330; URLs in Sources). These are McGraw-Hill copyrighted solutions. The tests cite them
@@ -825,21 +831,21 @@ Diesel with cv instead of cp, so it was **not** used.
 | all | w_net = q_in − q_out; Σ Δs = 0; Σ Δu (closed) or Σ Δh (flow) = 0; 0 < eta_th < eta_carnot | every catalogue case above |
 | paths | first and last path points equal the end states; s constant on isentropic paths; T monotonic on every path | each step kind |
 
-Probe values used in the plan: Atkinson r_c 8, T1 300, P1 1e5, T3 1800 → r_e 15.8813, T4 595.550 K,
+Probe values used in the plan: Atkinson r_c 8, T1 300, P1 1e5, T3 1800 -> r_e 15.8813, T4 595.550 K,
 eta 0.627497, mep 312.25 kPa. Otto at T1 300, P1 1e5, T3 1500 has its w_net maximum at r_c = 5^1.25 = 7.4767
 with w_net 328.87 kJ/kg; w_net = 250 kJ/kg has two roots, r_c = 2.7362 and 20.4306.
 
 ### 15.3 Solver behaviour tests
 
-- Under-determined messages: Atkinson(T1, P1, r_c) → `add_one_of` ⊇ {T3, P3, q_in, r_e}, and T2 ∉ add_one_of.
-  Otto(T1, P1) → missing = 2, and (r_c, T3) is in example_sets.
-- Over-determined: Atkinson(T1, P1, r_c, r_e, T3) → drop_one_of ⊇ {r_c, r_e, T3}. Otto(T1, u1, ...) → conflict
+- Under-determined messages: Atkinson(T1, P1, r_c) -> `add_one_of` ⊇ {T3, P3, q_in, r_e}, and T2 ∉ add_one_of.
+  Otto(T1, P1) -> missing = 2, and (r_c, T3) is in example_sets.
+- Over-determined: Atkinson(T1, P1, r_c, r_e, T3) -> drop_one_of ⊇ {r_c, r_e, T3}. Otto(T1, u1, ...) -> conflict
   names T1 and u1.
-- Redundant consistent: Otto(T1, P1, r_c, q_in, v2 = v1/r_c) with allow_redundant=True → solves.
-  Inconsistent → `InconsistentInputError` naming the input with given and implied values.
-- Ambiguous: Otto(T1 300, P1 1e5, T3 1500, w_net 250e3) → `AmbiguousSolutionError` with candidates ≈ (2.7362,
-  20.4306). No solution: w_net 400e3 → `NoSolutionError`.
-- Validity: Otto(T1 300, P1 1e5, r_c 10, T3 600) → `InvalidCycleError` naming step 2→3.
+- Redundant consistent: Otto(T1, P1, r_c, q_in, v2 = v1/r_c) with allow_redundant=True -> solves.
+  Inconsistent -> `InconsistentInputError` naming the input with given and implied values.
+- Ambiguous: Otto(T1 300, P1 1e5, T3 1500, w_net 250e3) -> `AmbiguousSolutionError` with candidates ≈ (2.7362,
+  20.4306). No solution: w_net 400e3 -> `NoSolutionError`.
+- Validity: Otto(T1 300, P1 1e5, r_c 10, T3 600) -> `InvalidCycleError` naming step 2->3.
 
 ### 15.4 Regression against the old code
 
@@ -856,7 +862,7 @@ carried over.
 | `src/thermo-cycles/` (hyphen, not importable) | `git mv` to `src/thermo_cycles/`; absolute `from core...` imports become package-relative |
 | `core/state.py` (`State` bag) | redesigned in `state.py` (§5.1); `get`/`has`/`summary` kept; upper-casing dropped (case-insensitive `get` instead) |
 | `core/cycle_state.py` | kept as a name and idea in `cycle_state.py` (§5.2); `mode`/`known`/`internal` removed |
-| `core/ideal_gas.py` (`IdealGasCycleBase`) | split: property formulas → `fluids/ideal_gas.py`; process formulas → `model/steps.py`. Kept: u = cvT, h = cpT, s reference 273.15 K / 1e5 Pa, isentropic relations. Fixed: `isochoric_from` no longer case-sensitive (moot), `isobaric_from` no longer silently ignores an unknown `known_prop` (moot: steps are relations now), `heat_supply` typed `str` (removed; q_in is a relation), numpy used only for `log` (core uses `math`) |
+| `core/ideal_gas.py` (`IdealGasCycleBase`) | split: property formulas -> `fluids/ideal_gas.py`; process formulas -> `model/steps.py`. Kept: u = cvT, h = cpT, s reference 273.15 K / 1e5 Pa, isentropic relations. Fixed: `isochoric_from` no longer case-sensitive (moot), `isobaric_from` no longer silently ignores an unknown `known_prop` (moot: steps are relations now), `heat_supply` typed `str` (removed; q_in is a relation), numpy used only for `log` (core uses `math`) |
 | `core/input_interpreter.py` | removed. Mode patterns are replaced by the solver (§9). Its bugs disappear with it: lower-case modes vs upper-case checks, `R_E` read but never required |
 | `cycles/atkinson.py` | removed. DESIGN mode ≡ `Cycle("diesel", T1=..., P1=..., r_c=..., T3=... or q_in=...)`, kept as a regression test (§15.4). EFFICIENCY mode ≡ `optimise("diesel", vary={"r_c": (5, 60)}, maximise="eta_th", fixed={T1, P1, T3: T3_MAX}, limits={"P2_max": P_RATIO*P1})`. Its bugs disappear: states overwritten per iteration, `i_max` unbound, hard-coded P1, empty `P2_MAX` branch. The module-level `test_atkinson_design` with its stray `''''''` string goes too |
 | `cycles/base.py` (`BaseCycle`, `AtkinsonCycle`) | replaced by `Cycle` (§4); `AtkinsonCycle` not kept (v0.x, no users) |
@@ -864,8 +870,8 @@ carried over.
 | `README.md` (2 lines) | rewritten: install, quick start, catalogue table, conventions, references |
 | `LICENSE` (MIT, 2025 Jesper Meijerink), `.gitignore` | kept |
 
-**The Atkinson/Diesel fix.** The new `atkinson` is the ideal Atkinson cycle: isochoric heat addition 2→3,
-isentropic expansion to P4 = P1 (so r_e = v4/v3 > r_c), isobaric heat rejection 4→1. The cycle the old code
+**The Atkinson/Diesel fix.** The new `atkinson` is the ideal Atkinson cycle: isochoric heat addition 2->3,
+isentropic expansion to P4 = P1 (so r_e = v4/v3 > r_c), isobaric heat rejection 4->1. The cycle the old code
 computed is available as `diesel`, unchanged.
 
 ## 17. Open choices (also in REPORT.md, "Needs Jesper")
