@@ -13,6 +13,7 @@ from .errors import InputError, LimitViolationError, LimitViolationWarning, Unkn
 from .fluids import AIR
 from .margins import check_limit_value, describe_violations, evaluate_limits, parse_limit_key
 from .model.cycle_def import get_cycle
+from .model.roles import state_roles
 from .solver import (CHECK_MODES, analyse, check_plausibility_mode, resolve_inputs, resolve_name, solve_cycle,
                      system_for)
 
@@ -229,7 +230,8 @@ def requirements(name: str, *, fluid=None, plausibility: str = "raise", **inputs
 
 
 def describe(name: str) -> str:
-    """Text description of a catalogue cycle (spec section 4): title, numbered steps, parameters with
+    """Text description of a catalogue cycle (spec section 4): title, numbered steps, the role of every state
+    in words (e.g. "4: turbine inlet (after 3->4 heat_in)"), parameters with
     descriptions and defaults, degrees of freedom, typical input sets and references.
 
     ``name`` is looked up as for ``Cycle`` (case-insensitive, aliases). Raises ``UnknownCycleError`` otherwise.
@@ -243,6 +245,7 @@ def describe(name: str) -> str:
             "", "Steps:"]
     out += [f"  {st.a}->{st.b} {st.kind} ({st.role})"
             + (f", efficiency {st.efficiency}" if st.efficiency else "") for st in defn.steps]
+    out += ["", "State roles:"] + [f"  {sid}: {words}" for sid, words in state_roles(defn).items()]
     out += ["", "Parameters:"]
     if defn.params:
         for p in defn.params:

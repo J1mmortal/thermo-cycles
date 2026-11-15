@@ -106,6 +106,76 @@ def _diagnose_zero_divisor(defn: CycleDef, fluid, system: EquationSystem, active
     return _undefined_error(defn, validity_problems(defn, values, steps), undefined)
 
 
+_PROPS = ("T", "P", "v", "u", "h", "s")
+
+
+def _state_of(name: str, main: "set[str]") -> "str | None":
+    """Main state id of a state-property variable (``"T4"`` -> ``"4"``, ``"h5s"`` -> ``"5"``), else None."""
+    if name[:1] not in _PROPS:
+        return None
+    sid = name[1:]
+    if sid in main:
+        return sid
+    if sid.endswith("s") and sid[:-1] in main:        # hidden isentropic end state of a non-ideal step
+        return sid[:-1]
+    return None
+
+
+def _explain_no_solution(defn: CycleDef, given: "Mapping[str, float]", err: NoSolutionError) -> str:
+    """Lines naming the user inputs involved in a failed solve and the role of the state each sets (v0.1.1).
+
+    Generic: the unsolved states come from ``err.variables``; the inputs involved are the given state
+    properties at those states or one step away, the given parameters whose relation or step touches them, and
+    the given whole-cycle quantities (q_in, w_net, ...). The words come from ``model.roles.state_roles``.
+    """
+    from ..model.roles import state_roles
+
+    roles = state_roles(defn)
+    main = {str(k) for k in defn.states}
+    unsolved = [sid for sid in dict.fromkeys(_state_of(v, main) for v in (err.variables or ())) if sid]
+    near = set(unsolved)
+    for st in defn.steps:
+        if str(st.a) in unsolved or str(st.b) in unsolved:
+            near |= {str(st.a), str(st.b)}
+    params = {p.name: p for p in defn.params}
+    lines = []
+    given_states = set()
+    for name, value in given.items():
+        sid = _state_of(name, main)
+        if sid is not None:
+            given_states.add(sid)
+            if sid not in near:
+                continue
+            words = roles[int(sid)] if int(sid) in roles else "state"
+            head, _, ctx = words.partition(" (")
+            where = f"state {sid}, {ctx[:-1]}" if ctx else f"state {sid}"
+            lines.append(f"{name} = {_fmt(name, value)} is the {head} in {defn.name} ({where}).")
+        elif name in params:
+            p = params[name]
+            touched = set()
+            if p.relation is not None:
+                touched = {_state_of(v, main) for v in p.relation.vars}
+            touched |= {str(x) for st in defn.steps if st.efficiency == name for x in (st.a, st.b)}
+            if not unsolved or touched & near:
+                lines.append(f"{name} = {_fmt(name, value)} is the {p.description}.")
+        else:
+            lines.append(f"{name} = {_fmt(name, value)} is a whole-cycle quantity.")
+    if not lines:
+        return ""
+    out = ["  Inputs involved and the role of the state they set:"] + [f"    {x}" for x in lines]
+    missing = [sid for sid in unsolved if sid not in given_states][:3]
+    if missing:
+        parts = []
+        for sid in missing:
+            words = roles.get(int(sid), "state")
+            head, _, ctx = words.partition(" (")
+            parts.append(f"the {head} is T{sid} (state {sid}" + (f", {ctx}" if ctx else ")"))
+        out.append(f"  Not solved: {'; '.join(parts)}.")
+    out.append(f"  Check that each value is given at the state you meant: describe({defn.name!r}) lists the role "
+               f"of every state.")
+    return "\n" + "\n".join(out)
+
+
 def solve_cycle(defn: CycleDef, fluid, inputs: Mapping[str, object], *, allow_redundant: bool = False,
                 check: str = "raise", plausibility: str = "raise"):
     """Solve one cycle from user inputs and return a ``CycleState``.
@@ -145,9 +215,12 @@ def solve_cycle(defn: CycleDef, fluid, inputs: Mapping[str, object], *, allow_re
         values, report = solve_numeric(system, active, validate=validate)
     except NoSolutionError as e:
         undefined_err = _diagnose_zero_divisor(defn, fluid, system, active, e)
-        if undefined_err is None:
+        if undefined_err is not None:
+            raise undefined_err from e
+        extra = _explain_no_solution(defn, active, e)
+        if not extra:
             raise
-        raise undefined_err from e
+        raise NoSolutionError(str(e) + extra, variables=e.variables, detail=e.detail) from e
 
     checks = []
     for name, g in dropped.items():

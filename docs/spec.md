@@ -138,7 +138,7 @@ from thermo_cycles import Cycle, IdealGas, AIR, optimise, requirements, describe
 from thermo_cycles.units import kPa, bar, degC
 
 list_cycles()                       # ['atkinson', 'brayton', 'brayton_regen', 'diesel', 'dual', 'otto']
-print(describe("atkinson"))         # steps, parameters, degrees of freedom, typical input sets, references
+print(describe("atkinson"))         # steps, state roles, parameters, degrees of freedom, typical inputs, refs
 
 c = Cycle("otto", T1=288, P1=100*kPa, r_c=10, q_in=1800e3)
 c.states[3].T, c.states[3].P        # 3232.1 K, 1.1223e7 Pa
@@ -598,6 +598,10 @@ rather than options.
    (xtol 1e-12 relative).
    - 0 roots -> `NoSolutionError`. It names the inputs involved, e.g. "w_net = 400 kJ/kg exceeds what T1, P1, T3
      allow (max ≈ 329 kJ/kg near r_c = 7.48)". The maximum |g| sample is reported when it can be found.
+     v0.1.1: `solve_cycle` then appends the given inputs at or one step away from the unsolved states (plus
+     given parameters touching them and whole-cycle inputs) with the role of the state each sets, derived from
+     the steps (`model.roles.state_roles`, also shown by `describe()`), e.g. "T3 = 1250 K is the regenerator
+     cold-side outlet in brayton_regen (state 3, before 3->4 heat_in). ... Not solved: the turbine inlet is T4".
    - more than 1 root -> each candidate solution is completed and checked against §9.7. If exactly one is valid it
      is used. Otherwise `AmbiguousSolutionError(variable, candidates)` is raised, for example "r_c = 2.736 or
      20.43; pass r_c explicitly". This is the classic case of w_net given at fixed T_max.
