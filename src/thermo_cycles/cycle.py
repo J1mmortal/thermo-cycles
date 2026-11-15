@@ -171,8 +171,9 @@ class Cycle:
                      **merged)
 
     def plot(self, kind: str = "Ts", **kw) -> Any:
-        raise NotImplementedError("Cycle.plot is not implemented yet in this build of thermo_cycles "
-                                  "(planned: v0.1 plotting with the [plot] extra).")
+        """T-s ("Ts"), P-v ("Pv") or both plot of this cycle; see ``thermo_cycles.plotting.plot_cycle``."""
+        from .plotting import plot_cycle
+        return plot_cycle(self, kind, **kw)
 
     # text and export ------------------------------------------------------------------------------------
     def __repr__(self) -> str:

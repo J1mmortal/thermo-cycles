@@ -240,8 +240,7 @@ def test_margins_plot_limits_placeholders():
     c = Cycle("otto", T1=300, P1=1e5, r_c=8, q_in=1e6)
     m = c.margins
     assert len(m) == 0 and m.ok and m.violated == () and m.worst is None
-    with pytest.raises(NotImplementedError):
-        c.plot("Ts")
+    assert c.plot("Ts") is not None            # plotting is implemented (Task 13); see tests/test_plotting.py
     with pytest.raises(NotImplementedError, match="limits"):
         Cycle("otto", T1=300, P1=1e5, r_c=8, q_in=1e6, limits={"T_max": 2500})
     with pytest.raises(InputError, match="on_violation"):
