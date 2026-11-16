@@ -50,9 +50,9 @@ def test_otto_closed_forms(r_c, q_in):
 
 
 def test_O1_all_printed_values():
-    """Spec 15.1 O1 printed values (P4 at rtol 3e-3: see T0077 open issue 2)."""
+    """Spec 15.1 O1 printed values (P4 = 446.5 kPa: 445.6 on the source sheet is a typo, P4 = P1*T4/T1)."""
     x, _ = solve_numeric(OTTO, {"T1": 288.0, "P1": 1e5, "r_c": 10.0, "q_in": 1.8e6})
-    exp = {"T2": 723.4, "P2": 2511.9e3, "T3": 3230.4, "P3": 11216.6e3, "T4": 1286, "P4": 445.6e3,
+    exp = {"T2": 723.4, "P2": 2511.9e3, "T3": 3230.4, "P3": 11216.6e3, "T4": 1286, "P4": 446.5e3,
            "q_out": 716.6e3, "w_net": 1083.4e3, "eta_th": 0.602, "mep": 1456.4e3}
     for k, v in exp.items():
         assert x[k] == pytest.approx(v, rel=3e-3), k

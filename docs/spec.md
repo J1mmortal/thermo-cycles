@@ -822,7 +822,7 @@ Cengel's 1.005/0.718 by ≤ 0.07 %, so tolerances are rtol 3e-3 unless stated.
 
 | id | cycle | source | inputs | printed results to assert |
 |---|---|---|---|---|
-| O1 | otto | Univ. Waterloo ME 354 Tutorial wk 8 solution (cold-air, k 1.4, cv 0.718) | r_c 10, T1 288 K, P1 100 kPa, q_in 1800 kJ/kg | T2 723.4 K, P2 2511.9 kPa, T3 3230.4 K, P3 11216.6 kPa, T4 1286 K, P4 445.6 kPa, q_out 716.6 kJ/kg, w_net 1083.4 kJ/kg, eta 0.602, MEP 1456.4 kPa |
+| O1 | otto | Univ. Waterloo ME 354 Tutorial wk 8 solution (cold-air, k 1.4, cv 0.718) | r_c 10, T1 288 K, P1 100 kPa, q_in 1800 kJ/kg | T2 723.4 K, P2 2511.9 kPa, T3 3230.4 K, P3 11216.6 kPa, T4 1286 K, P4 **446.5 kPa** (445.6 on the source sheet is a typo, P4 = P1·T4/T1 = 100·1286/288 = 446.5; confirmed by Jesper 2026-11-16), q_out 716.6 kJ/kg, w_net 1083.4 kJ/kg, eta 0.602, MEP 1456.4 kPa |
 | O2 | otto | Cengel & Boles 7e solutions manual, problem 9-39 (constant cp) | r_c 9.5, T1 308 K, P1 100 kPa, **T4 800 K** | T2 757.9 K, P2 2338 kPa, T3 1969 K, P3 6072 kPa, eta 0.594, MEP 652 kPa (exercises backward propagation) |
 | O3 | otto (loop) | derived from O1 | T1 288, r_c 10, q_in 1800e3, P3 11216.6e3 | P1 = 1e5 within 0.1 % (library gives 99 946 Pa because cv 717.5 vs 718); exercises a torn/Newton block |
 | D1 | diesel | Cengel & Boles 8e SM 9-57 (cold-air) | r_c 22, cutoff 1.8, T1 343 K, P1 97 kPa | T2 1181 K, T3 2126 K, T4 781 K. The SM's Q_in line uses 2216 K (typo), so only states are asserted; library q_in 949.1 kJ/kg, eta 0.66884 |
