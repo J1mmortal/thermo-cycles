@@ -9,7 +9,8 @@ from collections import OrderedDict
 from types import MappingProxyType
 from typing import Mapping
 
-from ..errors import InconsistentInputError, InvalidCycleError, CycleValidityWarning, NoSolutionError
+from ..errors import (ConvergenceError, CycleValidityWarning, InconsistentInputError, InvalidCycleError,
+                      NoSolutionError)
 from ..model.cycle_def import CycleDef
 from .advice import Requirements, analyse, raise_for
 from .numeric import SolveReport, _fmt, _solve, solve_numeric
@@ -78,15 +79,22 @@ def _undefined_error(defn: CycleDef, problems: "list[str]", undefined: "list[str
 
 
 def _diagnose_zero_divisor(defn: CycleDef, fluid, system: EquationSystem, active: "dict[str, float]",
-                           err: NoSolutionError) -> "InvalidCycleError | None":
+                           err: "NoSolutionError | ConvergenceError",
+                           any_failure: bool = False) -> "InvalidCycleError | None":
     """After ``err`` (a quotient result could not be computed, e.g. "eta_th = w_net/q_in ... the divisor is
     zero"), re-solve without the quotient results that are not inputs and check whether a result is undefined
-    (``undefined_results``). Returns the ``InvalidCycleError`` to raise, or None to keep ``err``."""
+    (``undefined_results``). Returns the ``InvalidCycleError`` to raise, or None to keep ``err``.
+
+    ``any_failure`` (v0.1.1): also for a ``ConvergenceError`` (singular Jacobian at the solution found), whose
+    variables are the whole system; zero heat input makes eta_th = w_net/q_in singular, so the degenerate
+    guard used to fire before this diagnosis (diesel T1=330, P1=120e3, r_c=16, cutoff=1, T0091)."""
     from ..results import step_results, undefined_results, validity_problems
 
     failed = set(getattr(err, "variables", ()) or ())
     drop = {r for r in _QUOTIENT_RESULTS if r in system.variables and r not in active}
-    if not failed or not failed <= drop:
+    if not any_failure and (not failed or not failed <= drop):
+        return None
+    if not drop:
         return None
     rels = [r for r in system.relations if not (set(r.vars) & drop)]
     if any(sum(1 for r in system.relations if v in r.vars) != 1 for v in drop):
@@ -321,6 +329,11 @@ def solve_cycle(defn: CycleDef, fluid, inputs: Mapping[str, object], *, allow_re
         if not extra:
             raise
         raise NoSolutionError(str(e) + extra, variables=e.variables, detail=e.detail) from e
+    except ConvergenceError as e:
+        undefined_err = _diagnose_zero_divisor(defn, fluid, system, active, e, any_failure=True)
+        if undefined_err is not None:
+            raise undefined_err from e
+        raise
 
     checks = []
     for name, g in dropped.items():

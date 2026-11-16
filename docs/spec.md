@@ -653,7 +653,10 @@ controls the final report.
 
   These raise `InvalidCycleError` with every `check` mode, `"off"` included. An undefined result is never
   returned. A divide-by-zero in one of these quotients during the solve gives the same error, not
-  `NoSolutionError`.
+  `NoSolutionError`. v0.1.1: so does a singular Jacobian at the solution (`ConvergenceError` from the
+  degenerate guard), when the re-solve without eta_th/mep/bwr shows an undefined result; e.g. diesel
+  T1 = 330 K, P1 = 120 kPa, r_c = 16, cutoff = 1 now gives the zero-heat error with "cutoff = 1 ... is the
+  degenerate limit".
 - Parameters inside their `bounds`.
 - Regenerator, for each pair declared in `regenerators` (cold side a_c->b_c, hot side a_h->b_h): T(a_h) ≥ T(b_c),
   T(b_h) ≥ T(a_c) and T(a_h) ≥ T(a_c), each with a relative tolerance of 1e-9. For brayton_regen these are
