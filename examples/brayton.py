@@ -49,6 +49,7 @@ best_w = optimise("brayton", vary={"r_p": (1.5, 40)}, maximise="w_net", fixed=fi
 best_eta = optimise("brayton", vary={"r_p": (1.5, 40)}, maximise="eta_th", fixed=fixed)
 print(best_w.message)
 print(best_eta.message)
+print(best_w)                           # one short line; the evaluation history is in best_w.history
 
 # 4. The regenerator cut-off: above some r_p the turbine exhaust (T5) is colder than the compressed air (T2), so
 #    a regenerator would heat the exhaust instead of the air. thermo_cycles refuses such a cycle and says why.

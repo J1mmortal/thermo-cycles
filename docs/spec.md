@@ -669,10 +669,14 @@ Before analysis:
 - Values must be real and finite. NaN, inf and complex values raise `InputError`. Python ints and numpy scalars
   are accepted and converted with `float()`.
 - Variables of positive kind must be > 0.
-- Names are resolved as in §3.
+- Names are resolved as in §3. v0.1.1: an unknown name (`UnknownInputError`, also from `Cycle.value`) lists the
+  known names grouped (state properties and states, parameters, step q/w, cycle quantities), difflib close
+  matches, "<cycle> has no state 9 (states: ...)" for a state number that does not exist, and
+  `describe(name)`.
 - Range: an input outside the solvable range is an `InputError`, not a warning (T outside 1..1e5 K, P outside
   1..1e10 Pa, v outside 1e-6..1e4 m³/kg, eta_th > 1, r_c < 1, ...: the scan ranges of §9.5 and the parameter
-  `bounds`). The message names the input and its range.
+  `bounds`). The message names the input and its range. v0.1.1: for a dimensionless input bounded by 1 and a
+  value in (1, 100] it adds "efficiencies and ratios are fractions (0.82, not 82)".
 - Plausibility (v0.1.1): a given state pressure P < 1 000 Pa or state temperature T < 100 K (thresholds strict:
   1 000 Pa and 100 K pass) raises `InputError` by default ("otto: P1 = 100 Pa: did you mean 100 kPa?
   thermo_cycles works in SI (write P1=100*kPa or 100*bar with thermo_cycles.units). If 100 Pa is really meant,
@@ -741,7 +745,8 @@ class OptimisationResult:
     x: Mapping[str, float]; value: float; cycle: Cycle        # full solved cycle at the optimum
     feasible: bool; active: tuple[str, ...]                   # limits with |margin_pct| < 1e-3 at the optimum
     evaluations: int; history: tuple[tuple[Mapping[str, float], float | None, bool], ...]
-    message: str
+    message: str                 # v0.1.1: with units, "maximum of w_net = 203.45 kJ/kg at r_p = 7.22093; ..."
+    # v0.1.1: repr is one short line (optimum, active, feasible, evaluations); the history stays in .history
 ```
 
 - Before any search, it checks that `fixed` ∪ `vary` keys is well-posed (`requirements` status `ok`). If not, it
@@ -766,7 +771,8 @@ class OptimisationResult:
 ```python
 def plot_cycle(cycle, kind="Ts", *, ax=None, n=100, show_states=True, show_hidden=True,
                logscale_P=False, P_unit="Pa", label=None, arrows=True, **line_kw)  # -> Axes or (Fig, (ax1, ax2))
-def plot_cycles(cycles, kind="Ts", *, ax=None, labels=None, **kw)                   # overlay
+def plot_cycles(cycles, kind="Ts", *, ax=None, labels=None, **kw)                   # overlay; v0.1.1: state
+                                     # labels of the 2nd, 3rd ... cycle are primed (3', 3'') and offset
 Cycle.plot(kind="Ts", **kw)   # -> plot_cycle(self, kind, **kw)
 ```
 

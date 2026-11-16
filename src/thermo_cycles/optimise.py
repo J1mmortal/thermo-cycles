@@ -37,6 +37,7 @@ from .margins import MarginReport, check_limit_value, parse_limit_key
 from .model.cycle_def import get_cycle
 from .results import CycleResults
 from .solver import check_plausibility_mode, raise_for, resolve_name, system_for
+from .solver.system import _unit as _sys_unit
 
 __all__ = ["optimise", "OptimisationResult", "ACTIVE_PCT"]
 
@@ -49,7 +50,7 @@ _RESULT_NAMES = tuple(f for f in CycleResults.__dataclass_fields__)
 _STRUCTURAL = (UnderdeterminedError, OverdeterminedError, UnknownInputError, UnknownCycleError)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class OptimisationResult:
     """Outcome of ``optimise`` (spec 12).
 
@@ -69,6 +70,13 @@ class OptimisationResult:
     history: "tuple[tuple[Mapping[str, float], float | None, bool], ...]"
     message: str
 
+    def __repr__(self) -> str:
+        """Short: the optimum with units, the active limits and the evaluation count (v0.1.1); the evaluation
+        history stays in ``.history``."""
+        head = self.message.split(";", 1)[0]
+        return (f"OptimisationResult({head}; active={self.active!r}; feasible={self.feasible}; "
+                f"evaluations={self.evaluations}; details in .x, .value, .cycle, .history, .message)")
+
 
 @dataclass
 class _Point:
@@ -85,6 +93,34 @@ class _Point:
 
 def _fmt(x: float) -> str:
     return f"{x:.6g}"
+
+
+_RESULT_UNITS = {"T_min": "K", "T_max": "K", "P_min": "Pa", "P_max": "Pa", "v_min": "m^3/kg", "v_max": "m^3/kg",
+                 "mep": "Pa"}
+
+
+def _unit_of(system, name: str) -> str:
+    """SI unit of a variable or result name ('' when dimensionless or unknown, e.g. for a callable)."""
+    if name in _RESULT_UNITS:
+        return _RESULT_UNITS[name]
+    if name in system.variables:
+        return _sys_unit(system, name)
+    return ""
+
+
+def _with_unit(system, name: str, x: float, precise: bool = False) -> str:
+    """``x`` with its unit, in kJ/kg and kPa for energies and pressures (v0.1.1: "218.67 kJ/kg").
+
+    ``precise`` (the objective value) prints energies and pressures with 2 decimals; otherwise 6 significant
+    digits (the varied inputs)."""
+    unit = _unit_of(system, name)
+    if unit == "J/kg":
+        return f"{x / 1e3:.2f} kJ/kg" if precise else f"{x / 1e3:.6g} kJ/kg"
+    if unit == "Pa":
+        return f"{x / 1e3:.2f} kPa" if precise else f"{x / 1e3:.6g} kPa"
+    if unit == "K" and precise:
+        return f"{x:.2f} K"
+    return f"{x:.6g} {unit}" if unit else f"{x:.6g}"
 
 
 def _check_bounds(cyc: str, vary, system) -> "dict[str, tuple[float, float]]":
@@ -443,7 +479,8 @@ def optimise(name: str, *, vary: Mapping[str, "tuple[float, float]"], maximise: 
     active = tuple(k for k, m in cycle.margins.items()
                    if not math.isnan(m.margin_pct) and abs(m.margin_pct) < ACTIVE_PCT)
     sense = "maximum" if sign > 0 else "minimum"
-    msg = (f"{sense} of {label} = {_fmt(win.value)} at {s.where(win.x)}; "
+    where = ", ".join(f"{k} = {_with_unit(system, k, v)}" for k, v in x.items())
+    msg = (f"{sense} of {label} = {_with_unit(system, label, win.value, precise=True)} at {where}; "
            f"{'active limits: ' + ', '.join(active) if active else 'no active limit'}. {how}; "
            f"{len(s.history)} evaluations.")
     return OptimisationResult(x=x, value=win.value, cycle=cycle, feasible=True, active=active,

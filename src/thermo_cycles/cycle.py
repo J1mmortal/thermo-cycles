@@ -149,7 +149,9 @@ class Cycle:
         try:
             canonical = resolve_name(system, name)
         except UnknownInputError as e:
-            raise UnknownInputError(str(e).replace("unknown input", "unknown variable"), name=e.name,
+            text = str(e).replace("unknown input", "unknown variable").replace("Known inputs:", "Known variables:")
+            text += f"\n  Cycle results are also accepted: {', '.join(res)}."
+            raise UnknownInputError(text, name=e.name,
                                     suggestions=e.suggestions, accepted=e.accepted) from None
         return self._cs.values[canonical]
 
