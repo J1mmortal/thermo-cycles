@@ -661,7 +661,12 @@ controls the final report.
   equality even when T5 < T2. The internal steps' q must sum to zero within 1e-6 × max(q_in, the largest
   internal |q|).
 - Message example: "step 2->3 (isochoric, heat_in) has q = −120.4 kJ/kg < 0: T3 = 600 K is below T2 = 689.2 K.
-  Raise T3 / q_in or lower r_c."
+  Raise T3 / q_in or lower r_c." v0.1.1: the advice is checked against the given inputs by a numeric
+  sensitivity (each given input perturbed by 1e-4 relative, nested re-solve, sign of the change of that step's
+  q). The generic advice is kept when every given input it names points the helpful way; otherwise it is
+  replaced by the given inputs only, each in the helpful direction with the value where q reaches 0, e.g. for
+  dual(T1=330, P1=120e3, r_c=15, P3=130e5, T4=2300): "Raise T4 (to >= 2383.3 K), r_c (to >= 15.54) or P1
+  (to >= 124.3 kPa), or lower P3 (to <= 12545.5 kPa) or T1 (to <= 318.5 K)."
 
 ### 9.8 Input validation
 

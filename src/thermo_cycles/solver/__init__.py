@@ -176,6 +176,106 @@ def _explain_no_solution(defn: CycleDef, given: "Mapping[str, float]", err: NoSo
     return "\n" + "\n".join(out)
 
 
+_SENS_REL = 1e-4                      # relative perturbation of a given input for the heat-sign sensitivity
+_THRESHOLD_STRETCH = (1.0, 1.05, 1.2, 1.5, 2.0, 4.0)   # multiples of the linear estimate tried as bracket ends
+
+
+def _fmt_threshold(system: EquationSystem, name: str, x: float) -> str:
+    from .system import _unit
+    unit = _unit(system, name)
+    if unit == "K":
+        return f"{x:.1f} K"
+    if unit == "Pa":
+        return f"{x / 1e3:.1f} kPa"
+    if unit == "J/kg":
+        return f"{x / 1e3:.1f} kJ/kg"
+    return f"{x:.4g}" + (f" {unit}" if unit else "")
+
+
+def _heat_hints(defn: CycleDef, system: EquationSystem, active: "dict[str, float]", steps,
+                problems: "list[str]") -> "dict[tuple[int, int], str]":
+    """Input-aware advice for heat_in steps with q < 0 (v0.1.1, T0091 open issue 1).
+
+    For each such step, perturb every given input (relative 1e-4) and re-solve: an input whose increase raises
+    the step's q helps when raised, one whose increase lowers q helps when lowered, one without effect is left
+    out. If every given input that the generic advice names ("Raise T3 / q_in or lower r_c") points the helpful
+    way, the generic advice is kept (it may also name an input to swap in, such as q_in). Otherwise the advice
+    lists only given inputs, each in the direction that helps and, where a nested solve finds it, the value at
+    which the step's q reaches 0, e.g. "Raise T4 (to >= 2383.3 K), r_c (to >= 15.54), or lower P3 (...)".
+    Returns ``{(a, b): advice}`` for the steps whose advice changes.
+    """
+    from math import isfinite
+
+    from scipy.optimize import brentq
+
+    from ..results import generic_heat_fix, step_results
+
+    bad = [st for st in steps if st.role == "heat_in"
+           and any(p.startswith(f"step {st.a}->{st.b} ({st.kind}, heat_in) has q =") for p in problems)]
+    if not bad:
+        return {}
+
+    def q_of(inputs, ab):
+        try:
+            vals = _solve(system, inputs, None, {}, True)[0]
+            return next(s.q for s in step_results(defn, vals) if (s.a, s.b) == ab)
+        except Exception:                             # noqa: BLE001 - a failed nested solve gives no advice
+            return float("nan")
+
+    out = {}
+    for st in bad:
+        ab = (st.a, st.b)
+        q0 = st.q
+        raise_, lower_ = [], []
+        for name, x in active.items():
+            dx = _SENS_REL * (abs(x) if x != 0 else 1.0)
+            dq = q_of({**active, name: x + dx}, ab) - q0
+            if not isfinite(dq) or abs(dq) <= 1e-12 * max(abs(q0), 1.0):
+                continue
+            (raise_ if dq > 0 else lower_).append((name, x, dq / dx))
+        g_raise, g_lower, g_text = generic_heat_fix(defn, st.b)
+        named = {n: "up" for n in g_raise} | {n: "down" for n in g_lower}
+        helps = {n: "up" for n, _, _ in raise_} | {n: "down" for n, _, _ in lower_}
+        given_named = [n for n in named if n in active]
+        if given_named and all(helps.get(n) == named[n] for n in given_named):
+            continue                                   # the generic advice is right for these inputs
+        if not raise_ and not lower_:
+            continue
+
+        def threshold(name, x, slope):
+            lo_r, hi_r, _ = system.scan_range[name]
+            est = x - q0 / slope
+            for f in _THRESHOLD_STRETCH:
+                xt = min(max(x + (est - x) * f, lo_r), hi_r)
+                qt = q_of({**active, name: xt}, ab)
+                if isfinite(qt) and qt >= 0:
+                    try:
+                        return brentq(lambda v: q_of({**active, name: v}, ab), x, xt, xtol=1e-12 * abs(xt) + 1e-12)
+                    except (ValueError, RuntimeError):
+                        return None
+            return None
+
+        def order(item):                               # the step's own states first, then parameters, then others
+            n = item[0]
+            own = n[1:] in (str(st.a), str(st.b)) and n[:1] in ("T", "P", "v", "u", "h", "s")
+            return (0 if own else 1 if n in {p.name for p in defn.params} else 2)
+
+        def words(items, sign):
+            parts = []
+            for name, x, slope in sorted(items, key=order):
+                t = threshold(name, x, slope)
+                parts.append(name if t is None else f"{name} (to {sign} {_fmt_threshold(system, name, t)})")
+            return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " or " + parts[-1]
+
+        parts = []
+        if raise_:
+            parts.append("Raise " + words(raise_, ">="))
+        if lower_:
+            parts.append(("or lower " if parts else "Lower ") + words(lower_, "<="))
+        out[ab] = ", ".join(parts) + "."
+    return out
+
+
 def solve_cycle(defn: CycleDef, fluid, inputs: Mapping[str, object], *, allow_redundant: bool = False,
                 check: str = "raise", plausibility: str = "raise"):
     """Solve one cycle from user inputs and return a ``CycleState``.
@@ -238,6 +338,9 @@ def solve_cycle(defn: CycleDef, fluid, inputs: Mapping[str, object], *, allow_re
         raise _undefined_error(defn, validity_problems(defn, values, steps), undefined)
     if check != "off":
         problems = validity_problems(defn, values, steps)
+        hints = _heat_hints(defn, system, active, steps, problems) if problems else {}
+        if hints:
+            problems = validity_problems(defn, values, steps, hints=hints)
         if problems:
             msg = (f"{defn.name}: the solved cycle is not physically valid:\n  - " + "\n  - ".join(problems))
             if check == "raise":
