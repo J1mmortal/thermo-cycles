@@ -761,6 +761,9 @@ class OptimisationResult:
     evaluations: int; history: tuple[tuple[Mapping[str, float], float | None, bool], ...]
     message: str                 # v0.1.1: with units, "maximum of w_net = 203.45 kJ/kg at r_p = 7.22093; ..."
     # v0.1.1: repr is one short line (optimum, active, feasible, evaluations); the history stays in .history
+    at_bound: Mapping[str, str]  # v0.1.1: {"r_p": "upper"} when the optimum is within 1e-6 (hi - lo) of a vary
+                                 # bound; the message then says "the optimum is on the upper bound of r_p (30),
+                                 # so it may lie outside the bounds: widen them to check (not an interior optimum)"
 ```
 
 - Before any search, it checks that `fixed` ∪ `vary` keys is well-posed (`requirements` status `ok`). If not, it

@@ -45,6 +45,7 @@ ACTIVE_PCT = 1e-3                 # a limit is active when |margin_pct| < ACTIVE
 _N_STARTS = 3                     # SLSQP starts from the best feasible Sobol samples (spec 12)
 _SOBOL_PER_DIM = 64               # Sobol sample size per variable (spec 12)
 _X_RTOL = 1e-12                   # relative x tolerance of brentq and the bisections
+_BOUND_RTOL = 1e-6                # an optimum within this fraction of (hi - lo) of a vary bound is "at_bound"
 _RESULT_NAMES = tuple(f for f in CycleResults.__dataclass_fields__)
 # errors that say "the inputs themselves are wrong": never turned into an infeasible point
 _STRUCTURAL = (UnderdeterminedError, OverdeterminedError, UnknownInputError, UnknownCycleError)
@@ -59,6 +60,8 @@ class OptimisationResult:
     search raises). active: limit keys with |margin_pct| < 1e-3 at the optimum, in the order given.
     evaluations: number of distinct cycle evaluations. history: one ``(x, value or None, feasible)`` per
     evaluation, in order (value None when the solve failed). message: how the optimum was found.
+    at_bound (v0.1.1): ``{name: "lower" | "upper"}`` for every varied input whose optimum lies on its vary bound
+    (within 1e-6 of the bound span); then the true optimum may lie outside the bounds.
     """
 
     x: Mapping[str, float]
@@ -69,12 +72,14 @@ class OptimisationResult:
     evaluations: int
     history: "tuple[tuple[Mapping[str, float], float | None, bool], ...]"
     message: str
+    at_bound: Mapping[str, str] = MappingProxyType({})
 
     def __repr__(self) -> str:
         """Short: the optimum with units, the active limits and the evaluation count (v0.1.1); the evaluation
         history stays in ``.history``."""
         head = self.message.split(";", 1)[0]
-        return (f"OptimisationResult({head}; active={self.active!r}; feasible={self.feasible}; "
+        bound = f"; at_bound={dict(self.at_bound)!r}" if self.at_bound else ""
+        return (f"OptimisationResult({head}; active={self.active!r}{bound}; feasible={self.feasible}; "
                 f"evaluations={self.evaluations}; details in .x, .value, .cycle, .history, .message)")
 
 
@@ -480,8 +485,22 @@ def optimise(name: str, *, vary: Mapping[str, "tuple[float, float]"], maximise: 
                    if not math.isnan(m.margin_pct) and abs(m.margin_pct) < ACTIVE_PCT)
     sense = "maximum" if sign > 0 else "minimum"
     where = ", ".join(f"{k} = {_with_unit(system, k, v)}" for k, v in x.items())
+    at_bound = {}
+    for k, (lo, hi) in bounds.items():
+        tol = _BOUND_RTOL * (hi - lo)
+        if abs(x[k] - lo) <= tol:
+            at_bound[k] = "lower"
+        elif abs(x[k] - hi) <= tol:
+            at_bound[k] = "upper"
+    on_bound = ""
+    if at_bound:
+        sides = ", ".join(f"on the {side} bound of {k} ({_fmt(bounds[k][0 if side == 'lower' else 1])})"
+                          for k, side in at_bound.items())
+        on_bound = (f"; the optimum is {sides}, so it may lie outside the bounds: widen them to check "
+                    f"(not an interior optimum)")
     msg = (f"{sense} of {label} = {_with_unit(system, label, win.value, precise=True)} at {where}; "
-           f"{'active limits: ' + ', '.join(active) if active else 'no active limit'}. {how}; "
+           f"{'active limits: ' + ', '.join(active) if active else 'no active limit'}{on_bound}. {how}; "
            f"{len(s.history)} evaluations.")
     return OptimisationResult(x=x, value=win.value, cycle=cycle, feasible=True, active=active,
-                              evaluations=len(s.history), history=tuple(s.history), message=msg)
+                              evaluations=len(s.history), history=tuple(s.history), message=msg,
+                              at_bound=MappingProxyType(at_bound))
