@@ -290,6 +290,10 @@ def _keys(defn: CycleDef) -> "list[str]":
 def register_cycle(defn: CycleDef, *, replace: bool = False) -> None:
     """Validate ``defn`` (spec 8.1) and add it to the registry.
 
+    ``CycleDef``, ``StepDef``, ``ParamDef`` and the relation helpers (``ratio``, ``linear``, ``equal``,
+    ``product``, ``fixed``) are in ``thermo_cycles.custom`` (the three classes also in ``thermo_cycles``); its
+    docstring has a complete three-step example.
+
     Raises ``ValueError`` on a bad definition, or when its name or an alias is already taken
     (case-insensitive) and ``replace`` is false. With ``replace=True`` a cycle of the same name is replaced.
     """

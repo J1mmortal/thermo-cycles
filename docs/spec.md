@@ -81,6 +81,8 @@ thermo-cycles/
     model/relations.py   Relation + helper constructors
     model/steps.py       process step kinds (isentropic, isochoric, isobaric, isothermal, adiabatic)
     model/cycle_def.py   StepDef, ParamDef, CycleDef, registry (register_cycle, get_cycle, list_cycles)
+    custom.py            v0.1.1: public namespace for custom cycles (CycleDef, StepDef, ParamDef, register_cycle,
+                         Relation, ratio, linear, equal, product, fixed); the three classes also in thermo_cycles
     catalogue/__init__.py   imports the modules below so the registry is populated
     catalogue/piston.py     otto, diesel, dual, atkinson
     catalogue/gas_turbine.py  brayton, brayton_regen
@@ -198,6 +200,7 @@ def requirements(name: str, *, fluid: Fluid | None = None, plausibility: str = "
 def describe(name: str) -> str
 def list_cycles() -> list[str]
 def register_cycle(defn: CycleDef, *, replace: bool = False) -> None      # advanced; how the catalogue is built
+# v0.1.1: from thermo_cycles.custom import CycleDef, StepDef, ParamDef, ratio, linear, register_cycle
 def optimise(name: str, *, vary: Mapping[str, tuple[float, float]], maximise: str | Callable | None = None,
              minimise: str | Callable | None = None, fixed: Mapping[str, float] = {},
              limits: Mapping[str, float] = {}, fluid: Fluid | None = None, grid: int = 81,

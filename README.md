@@ -89,7 +89,21 @@ Notes:
 - Atkinson MEP uses v_max = v4 (not v1), because r_e > r_c.
 - `brayton_regen` numbering equals Cengel and Boles 9-110, including the hidden states 2s and 5s.
 - Validity bounds: cutoff ≥ 1, alpha ≥ 1, r_c, r_e, r_p ≥ 1 at input but > 1 in effect (r = 1 is rejected as a zero-heat / zero-swept-volume / zero-expansion-work cycle), 0 < eta_c, eta_t ≤ 1, 0 ≤ eps ≤ 1. Atkinson's r_e > r_c is not a declared bound; a violation is caught by the step 2->3 validity check.
-- Your own cycle: `register_cycle(CycleDef(...))`, about 20 lines of data and no solver code (spec §8.1).
+- Your own cycle: `register_cycle(CycleDef(...))`, about 20 lines of data and no solver code (spec §8.1):
+
+  ```python
+  from thermo_cycles.custom import CycleDef, StepDef, ParamDef, ratio, register_cycle
+
+  register_cycle(CycleDef(
+      name="three_step", title="isentropic, isobaric, isochoric", aliases=(), system="closed", states=(1, 2, 3),
+      steps=(StepDef("isentropic", 1, 2, "compression"), StepDef("isobaric", 2, 3, "heat_in"),
+             StepDef("isochoric", 3, 1, "heat_out")),
+      params=(ParamDef("r_c", "compression ratio v1/v2", ratio("r_c", "v1", "v2")),),
+      v_max_state=1, v_min_state=2))
+  Cycle("three_step", T1=293, P1=1e5, r_c=5)
+  ```
+
+  `thermo_cycles.custom` also has `linear`, `equal`, `product`, `fixed` and `Relation`.
 
 ## Conventions
 
