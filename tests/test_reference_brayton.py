@@ -47,11 +47,18 @@ def test_regenerator_valid_just_below_threshold(eps):
     assert c.results.w_net == pytest.approx(c.results.q_in - c.results.q_out, rel=1e-12)
 
 
-@pytest.mark.parametrize("eps", [0.0, 0.5, 1.0])
+@pytest.mark.parametrize("eps", [0.5, 1.0])
 def test_regenerator_invalid_just_above_threshold(eps):
     with pytest.raises(InvalidCycleError, match="regenerator") as ei:
         Cycle("brayton_regen", T1=300, P1=1e5, r_p=RP_STAR * 1.01, T4=1200, eps=eps)
     assert any("regenerator" in p and "T5" in p for p in ei.value.problems)
+
+
+def test_regenerator_eps_zero_above_threshold_is_plain_brayton():
+    # v0.1.1 (T0091 open issue 4): eps = 0 exchanges no heat, so the ordering rule does not apply
+    c = Cycle("brayton_regen", T1=300, P1=1e5, r_p=RP_STAR * 1.01, T4=1200, eps=0.0)
+    b = Cycle("brayton", T1=300, P1=1e5, r_p=RP_STAR * 1.01, T3=1200)
+    assert c.results.eta_th == pytest.approx(b.results.eta_th, rel=1e-9)
 
 
 def test_regenerator_message_names_steps_and_fix():

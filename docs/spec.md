@@ -659,7 +659,9 @@ controls the final report.
   T(b_h) ≥ T(a_c) and T(a_h) ≥ T(a_c), each with a relative tolerance of 1e-9. For brayton_regen these are
   T5 ≥ T3, T6 ≥ T2 and T5 ≥ T2. The third condition is needed because at eps = 1 the first two hold with
   equality even when T5 < T2. The internal steps' q must sum to zero within 1e-6 × max(q_in, the largest
-  internal |q|).
+  internal |q|). v0.1.1: a regenerator pair that exchanges no heat (both sides |q| <= 1e-9 × max(q_in, the
+  largest step |q| or |w|), i.e. eps = 0) is the cycle without regeneration and the ordering rule is skipped,
+  so brayton_regen with eps = 0 equals brayton at any r_p.
 - Message example: "step 2->3 (isochoric, heat_in) has q = −120.4 kJ/kg < 0: T3 = 600 K is below T2 = 689.2 K.
   Raise T3 / q_in or lower r_c." v0.1.1: the advice is checked against the given inputs by a numeric
   sensitivity (each given input perturbed by 1e-4 relative, nested re-solve, sign of the change of that step's

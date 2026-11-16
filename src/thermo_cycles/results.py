@@ -254,6 +254,11 @@ def _internal_problems(defn: CycleDef, values: Mapping[str, float], steps: "tupl
     by_ab = {(st.a, st.b): st for st in internal}
     for (cold_ab, hot_ab) in defn.regenerators:
         cold, hot = by_ab[tuple(cold_ab)], by_ab[tuple(hot_ab)]
+        # v0.1.1: no heat exchanged (eps = 0, within 1e-9 of the cycle's scale) is the cycle without a
+        # regenerator; the hot/cold ordering rule only applies when heat actually flows (T0091 open issue 4).
+        q_zero = HEAT_SIGN_RTOL * max(abs(q_in), _step_scale(steps))
+        if abs(cold.q) <= q_zero and abs(hot.q) <= q_zero:
+            continue
         ci, co, hi, ho = cold.a, cold.b, hot.a, hot.b
         T = {k: float(values[f"T{k}"]) for k in (ci, co, hi, ho)}
         tol = REGEN_T_RTOL * max(abs(x) for x in T.values())
