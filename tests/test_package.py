@@ -3,7 +3,7 @@ import pytest
 
 def test_import_and_version():
     tc = importlib.import_module("thermo_cycles")
-    assert tc.__version__ == "0.1.0"
+    assert tc.__version__ == "0.1.1"
 
 def test_error_hierarchy():
     from thermo_cycles import errors as E
@@ -30,3 +30,13 @@ def test_no_old_modules_and_no_matplotlib_import():
     assert out.stdout.strip() == "False"
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("thermo_cycles.core")
+
+def test_version_single_source():
+    """pyproject takes the version from thermo_cycles.__version__ (dynamic), so installed metadata must agree."""
+    from importlib import metadata
+    import thermo_cycles
+    try:
+        installed = metadata.version("thermo-cycles")
+    except metadata.PackageNotFoundError:
+        pytest.skip("thermo-cycles is not installed")
+    assert installed == thermo_cycles.__version__

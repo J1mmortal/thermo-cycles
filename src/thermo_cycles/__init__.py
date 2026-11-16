@@ -13,7 +13,7 @@ from .optimise import OptimisationResult, optimise
 from .plotting import plot_cycle, plot_cycles   # matplotlib is imported lazily inside these functions
 from . import custom   # noqa: E402  (custom cycles: CycleDef, StepDef, ParamDef, relation helpers)
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 # The plan's final __all__ (first twelve names), then the other public names that earlier tasks exported.
 __all__ = ["Cycle", "IdealGas", "AIR", "requirements", "describe", "list_cycles", "register_cycle", "optimise",
            "plot_cycles", "errors", "units", "__version__",
