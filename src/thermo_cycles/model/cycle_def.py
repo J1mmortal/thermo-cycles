@@ -7,7 +7,7 @@ import math
 from dataclasses import dataclass
 from typing import Literal
 
-from ..errors import UnknownCycleError
+from ..errors import CycleDefinitionError, UnknownCycleError
 from ..state import PROPS
 from .relations import Relation
 from .steps import KINDS
@@ -104,16 +104,16 @@ def result_vars(defn: CycleDef) -> "tuple[str, ...]":
 
 
 def _fail(defn_name, msg):
-    raise ValueError(f"cycle definition {defn_name!r}: {msg}")
+    raise CycleDefinitionError(f"cycle definition {defn_name!r}: {msg}")
 
 
 def validate_cycle(defn: CycleDef) -> None:
-    """Check a definition per spec 8.1; raises ``ValueError`` naming the problem."""
+    """Check a definition per spec 8.1; raises ``CycleDefinitionError`` (a ``ValueError``) naming the problem."""
     if not isinstance(defn, CycleDef):
-        raise ValueError(f"expected a CycleDef, got {type(defn).__name__}")
+        raise CycleDefinitionError(f"expected a CycleDef, got {type(defn).__name__}")
     nm = defn.name
     if not isinstance(nm, str) or not nm.isidentifier():
-        raise ValueError(f"cycle name must be a non-empty identifier string, got {nm!r}")
+        raise CycleDefinitionError(f"cycle name must be a non-empty identifier string, got {nm!r}")
     if not isinstance(defn.aliases, tuple) or not all(isinstance(a, str) and a for a in defn.aliases):
         _fail(nm, f"aliases must be a tuple of non-empty strings, got {defn.aliases!r}")
     if defn.system not in SYSTEMS:
@@ -294,13 +294,13 @@ def register_cycle(defn: CycleDef, *, replace: bool = False) -> None:
     ``product``, ``fixed``) are in ``thermo_cycles.custom`` (the three classes also in ``thermo_cycles``); its
     docstring has a complete three-step example.
 
-    Raises ``ValueError`` on a bad definition, or when its name or an alias is already taken
+    Raises ``CycleDefinitionError`` (a ``ThermoCyclesError`` and ``ValueError``) on a bad definition, or when its name or an alias is already taken
     (case-insensitive) and ``replace`` is false. With ``replace=True`` a cycle of the same name is replaced.
     """
     validate_cycle(defn)
     keys = _keys(defn)
     if len(set(keys)) != len(keys):
-        raise ValueError(f"cycle definition {defn.name!r}: name and aliases must be unique "
+        raise CycleDefinitionError(f"cycle definition {defn.name!r}: name and aliases must be unique "
                          f"(case-insensitive), got {keys}")
     for other in _REGISTRY.values():
         if replace and other.name == defn.name:
@@ -308,8 +308,8 @@ def register_cycle(defn: CycleDef, *, replace: bool = False) -> None:
         clash = set(keys) & set(_keys(other))
         if clash:
             if other.name.lower() == defn.name.lower() and not replace:
-                raise ValueError(f"cycle {other.name!r} is already registered; pass replace=True to replace it")
-            raise ValueError(f"cycle definition {defn.name!r}: name/alias {sorted(clash)} already used by "
+                raise CycleDefinitionError(f"cycle {other.name!r} is already registered; pass replace=True to replace it")
+            raise CycleDefinitionError(f"cycle definition {defn.name!r}: name/alias {sorted(clash)} already used by "
                              f"cycle {other.name!r}")
     _REGISTRY[defn.name] = defn
 

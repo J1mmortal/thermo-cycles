@@ -431,7 +431,8 @@ one, it stays right when a loop is renumbered or extended, and a typo is caught 
 Example: `brayton_regen` has `regenerators=(((2, 3), (5, 6)),)`. The §9.7 regenerator rule uses these sides,
 never the step order.
 
-Validation in `register_cycle` (and `build_system`):
+Validation in `register_cycle` (and `build_system`; v0.1.1: failures raise `CycleDefinitionError`, a
+`ThermoCyclesError` and `ValueError`):
 - the steps form one closed loop through all states in order, and every state appears exactly once as a step
   start;
 - parameter names don't clash with property or result names;
@@ -811,6 +812,8 @@ ThermoCyclesError(Exception)
 │   ├── UnderdeterminedError       (.missing, .given, .add_one_of, .example_sets, .determined)
 │   ├── OverdeterminedError        (.conflicting, .drop_one_of)
 │   └── InconsistentInputError     (.name, .given, .implied)
+├── CycleDefinitionError(ThermoCyclesError, ValueError)   # v0.1.1: bad CycleDef / relation (register_cycle,
+│                                                          # build_system, linear, ...); `except ValueError` works
 ├── NoSolutionError                (.variables, .detail)
 ├── AmbiguousSolutionError         (.variable, .candidates)
 ├── ConvergenceError               (.variables, .residual)

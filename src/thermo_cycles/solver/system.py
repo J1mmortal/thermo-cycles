@@ -12,7 +12,7 @@ from typing import Mapping
 
 import numpy as np
 
-from ..errors import InputError, InputPlausibilityWarning, UnknownInputError
+from ..errors import CycleDefinitionError, InputError, InputPlausibilityWarning, UnknownInputError
 from ..fluids.ideal_gas import IdealGas
 from ..model.cycle_def import CycleDef, result_vars, state_ids, step_vars, validate_cycle
 from ..model.relations import Relation, default_scale, fixed, linear, product
@@ -212,11 +212,11 @@ def build_system(defn: CycleDef, fluid) -> EquationSystem:
     # every relation must only use known variables
     vset = set(variables)
     if len(vset) != len(variables):
-        raise ValueError(f"cycle {defn.name!r}: duplicate variable names in the equation system")
+        raise CycleDefinitionError(f"cycle {defn.name!r}: duplicate variable names in the equation system")
     for r in relations:
         bad = [v for v in r.vars if v not in vset]
         if bad:
-            raise ValueError(f"cycle {defn.name!r}: relation {r.name!r} uses unknown variables {bad}")
+            raise CycleDefinitionError(f"cycle {defn.name!r}: relation {r.name!r} uses unknown variables {bad}")
 
     # ideal-gas equivalents: u_k and h_k carry the same information as T_k
     equivalent = {}

@@ -33,6 +33,11 @@ class InputError(ThermoCyclesError, ValueError):
     """Bad user input; ``except ValueError`` still works."""
 
 
+class CycleDefinitionError(ThermoCyclesError, ValueError):
+    """A bad cycle definition (``register_cycle``, ``build_system``, relation helpers such as ``linear``);
+    ``except ValueError`` still works (v0.1.1)."""
+
+
 class UnknownCycleError(InputError):
     _fields = (("suggestions", ()),)
 
