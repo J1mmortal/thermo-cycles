@@ -5,12 +5,17 @@ every state, every process step, the standard results, margins to your limits, a
 process curves. It is the thermodynamics sibling of
 [rocket-analysis-toolkit](https://github.com/J1mmortal/rocket-analysis-toolkit).
 
-The package is `thermo_cycles` (distribution `thermo-cycles`, version 0.1.0, Python ≥ 3.10, MIT licence). Core
+The package is `thermo_cycles` (distribution `thermo-cycles`, version 0.1.1, Python ≥ 3.10, MIT licence). Core
 dependencies are numpy and scipy. matplotlib is optional and only needed for plots.
 
 ## Install
 
-One line, from the main branch on GitHub (the `[plot]` extra adds matplotlib):
+```
+pip install "thermo-cycles[plot]"
+```
+
+The `[plot]` extra adds matplotlib; leave it out (`pip install thermo-cycles`) if you do not need plots. This line
+works once the first release is on PyPI. Until then, or to follow the main branch, install from GitHub:
 
 ```
 pip install "thermo-cycles[plot] @ git+https://github.com/J1mmortal/thermo-cycles"
