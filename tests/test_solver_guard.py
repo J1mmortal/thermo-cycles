@@ -71,7 +71,16 @@ def test_reach_sweep_budget_falls_back_to_plain_detail(monkeypatch):
     assert "exceeds what" not in str(ei.value)
 
 
-def test_regular_solve_reports_work_well_below_budget():
+# v0.2 (T0096): parametrised so the regenerative isothermal cycles are covered too; the otto case is the original.
+_REGULAR = [
+    ("otto", {"T1": 288.0, "r_c": 10.0, "q_in": 1.8e6, "P3": 11216.6e3}),
+    ("stirling", {"T1": 298.0, "P1": 50e3, "r_c": 12.0, "P4": 3600e3}),          # Cengel 7e SM 9-81
+    ("stirling", {"T1": 300.0, "P1": 1e5, "eps": 0.7, "r_c": 8.0, "eta_th": 0.5}),     # backward: T4 from eta
+]
+
+
+@pytest.mark.parametrize("name, inputs", _REGULAR, ids=[f"{n}-{i}" for i, (n, _) in enumerate(_REGULAR)])
+def test_regular_solve_reports_work_well_below_budget(name, inputs):
     from thermo_cycles.solver.numeric import MAX_WORK
-    _, rep = solve_numeric(OTTO, {"T1": 288.0, "r_c": 10.0, "q_in": 1.8e6, "P3": 11216.6e3})
+    _, rep = solve_numeric(build_system(get_cycle(name), AIR), inputs)
     assert 0 < rep.work < MAX_WORK / 10

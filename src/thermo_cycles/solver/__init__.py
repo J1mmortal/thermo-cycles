@@ -67,8 +67,8 @@ def _drop_redundant(system: EquationSystem, given: "dict[str, float]", req: Requ
 # Results that are a quotient (eta_th = w_net/q_in, mep = w_net/(v_max - v_min), bwr = -w_compression/w_expansion)
 # and appear in no other relation: when one of them hits a zero divisor the rest of the cycle is still determined.
 _QUOTIENT_RESULTS = ("eta_th", "mep", "bwr")
-_UNDEFINED_NOTE = ("  (raised for every check mode, 'raise', 'warn' and 'off': an undefined eta_th, mep or bwr is "
-                   "never returned as a result.)")
+_UNDEFINED_NOTE = ("  (raised for every check mode, 'raise', 'warn' and 'off': an undefined eta_th, mep, bwr or "
+                   "eta_ii is never returned as a result.)")
 
 
 def _undefined_error(defn: CycleDef, problems: "list[str]", undefined: "list[str]") -> InvalidCycleError:

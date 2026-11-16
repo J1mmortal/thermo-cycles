@@ -277,7 +277,10 @@ def _internal_problems(defn: CycleDef, values: Mapping[str, float], steps: "tupl
             continue
         msg = f"{label}: {' and '.join(bad)}, so heat would flow from the cold stream to the hot one. "
         if T[hi] < T[ci] - tol:
-            fix = [f"lower {' / '.join(lower)}"] if lower else ["reduce the compression"]
+            # Lowering r_c / r_p only lowers the cold inlet when a compression step heats the gas; with an
+            # isothermal compression (stirling, ericsson: role heat_out) T(a_c) = T1 whatever the ratio.
+            heats = any(st.role == "compression" for st in steps)
+            fix = ([f"lower {' / '.join(lower)}"] if lower else ["reduce the compression"]) if heats else []
             fix += [f"raise {' / '.join(peak)}"] if peak else []
             alt = defn.name[:-len("_regen")] if defn.name.endswith("_regen") else ""
             msg += (f"The hot stream enters colder than the cold stream (T{hi} < T{ci}), so no regenerator "
@@ -343,6 +346,25 @@ def _degenerate_params(defn: CycleDef, values: Mapping[str, float]) -> "list[str
     return hints
 
 
+def _no_temperature_span(defn: CycleDef, values: Mapping[str, float], steps: "tuple[StepResult, ...]"
+                         ) -> "str | None":
+    """v0.2: T_max = T_min over the main and hidden states (within 1e-9), so eta_carnot = 0 and
+    eta_ii = eta_th/eta_carnot is undefined. Reachable only when every step keeps T constant (stirling or
+    ericsson with T_H = T_L); every other cycle has zero heat input first. None when the span is fine."""
+    Ts = [float(values[f"T{sid}"]) for sid in state_ids(defn)]
+    T_min, T_max = min(Ts), max(Ts)
+    if not _same(T_min, T_max) or _zero_heat(values, steps):
+        return None
+    hot = [st for st in steps if st.role == "heat_in" and st.kind == "isothermal"]
+    cold = [st for st in steps if st.role == "heat_out" and st.kind == "isothermal"]
+    hot_t = " / ".join(f"T{st.a} (heat addition {st.a}->{st.b})" for st in hot) or "the heat-addition temperature"
+    cold_t = f"T{cold[0].a}" if cold else "the heat-rejection temperature"
+    return (f"no temperature difference: T_max = T_min = {_K(T_max)}, so eta_carnot = 1 - T_min/T_max = 0 and "
+            f"eta_ii = eta_th/eta_carnot is undefined; a heat engine must take in heat at a higher "
+            f"temperature than it rejects it (here w_net = {float(values['w_net']) / 1e3:.1f} kJ/kg). "
+            f"Fix: raise {hot_t} above {cold_t}.")
+
+
 def undefined_results(defn: CycleDef, values: Mapping[str, float], steps: "tuple[StepResult, ...]"
                       ) -> "list[str]":
     """Problems that leave a cycle result undefined (a zero divisor), as messages; empty when all are defined.
@@ -350,7 +372,8 @@ def undefined_results(defn: CycleDef, values: Mapping[str, float], steps: "tuple
     - zero heat input: |q_in| <= 1e-9 x the largest step |q| or |w|, so eta_th = w_net/q_in is undefined;
     - closed cycles: v_max_state and v_min_state have the same volume (within 1e-9), so mep is undefined;
     - flow cycles: |w_expansion| <= 1e-9 x the largest step |q| or |w|, so bwr = -w_compression/w_expansion is
-      undefined.
+      undefined;
+    - v0.2: no temperature difference (T_max = T_min), so eta_ii = eta_th/eta_carnot is undefined.
 
     Each message names the step(s), the states whose properties coincide and the fix. ``values`` need not contain
     eta_th, mep or bwr (``solve_cycle`` calls this on a re-solve without them after a divide-by-zero).
@@ -374,6 +397,9 @@ def undefined_results(defn: CycleDef, values: Mapping[str, float], steps: "tuple
         fix = hints + [f"raise {peak} (heat must enter the cycle)"]
         problems.append(f"zero heat input: q_in = {q_show / 1e3:.1f} kJ/kg, so eta_th = w_net/q_in is undefined "
                         f"and this is not a power cycle. {'; '.join(parts)}. Fix: {'; or '.join(fix)}.")
+    span = _no_temperature_span(defn, values, steps)
+    if span:
+        problems.append(span)
     if defn.system == "closed":
         a, b = defn.v_max_state, defn.v_min_state
         va, vb = float(values[f"v{a}"]), float(values[f"v{b}"])
