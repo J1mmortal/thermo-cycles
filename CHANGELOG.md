@@ -12,6 +12,13 @@ First release on PyPI. Usability fixes from the first live trial of v0.1, plus p
   degC, or a state pressure below 1 kPa). Pass `plausibility="warn"` or `plausibility="off"` to `Cycle`,
   `solve_cycle`, `optimise` or `requirements` to get the old warning or no check. `with_inputs` forwards the setting.
   `optimise` checks once before the search.
+- **`brayton_regen` given `T3` of 1000 K or more raises `InputError`.** In `brayton_regen` T3 is the regenerator
+  cold outlet and the turbine inlet is T4, so `T3=1250` is almost always a mix-up with `brayton`. With component
+  efficiencies it used to solve silently to a wrong cycle (T4 about 2350 K); with ideal components it gave a
+  cryptic no-solution error. The message reads "T3 = 1250 K is the regenerator cold outlet in brayton_regen;
+  the turbine inlet is T4. Did you mean T4=1250?". `plausibility="warn"` turns it into a warning, `"off"` skips
+  it (the no-solution error then carries the same hint). `describe()` and the README catalogue name the turbine
+  inlet state of `brayton` and `brayton_regen`.
 - A cycle definition error raises `CycleDefinitionError` (a `ThermoCyclesError` and a `ValueError`).
 - No-solution errors name the state role of each input involved, for example "T3 = 1250 K is the regenerator
   cold-side outlet". `describe()` lists the state roles of every state.
