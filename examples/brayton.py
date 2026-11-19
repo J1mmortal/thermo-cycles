@@ -34,14 +34,17 @@ print(f"brayton_regen, r_p = 8: w_net = {g.w_net / 1e3:.2f} kJ/kg, eta_th = {g.e
       f"(T3 = {regen.states[3].T:.1f} K leaves the regenerator, T4 = {regen.states[4].T:.1f} K enters the turbine)")
 
 # Giving the turbine inlet as T3 in brayton_regen means something else: T3 is the regenerator cold-side outlet.
-# With component efficiencies this is even solvable, as a different (much hotter) cycle; describe() shows the roles.
-other = Cycle("brayton_regen", T1=T1, P1=P1, r_p=8, T3=TIT, eps=EPS, eta_c=ETA_C, eta_t=ETA_T)
-print(f"brayton_regen with T3 = {TIT:.0f} K: the turbine inlet is T4 = {other.states[4].T:.1f} K, not {TIT:.0f} K")
-# With ideal components (the trial's call) no T4 fits, and the error says which state T3 is.
+# With component efficiencies that call would even solve, as a different (much hotter) cycle, so a given T3
+# of 1000 K or more raises InputError. plausibility="warn" turns it into a warning, "off" skips the guard.
 try:
-    Cycle("brayton_regen", T1=T1, P1=P1, r_p=8, T3=TIT, eps=EPS)
+    Cycle("brayton_regen", T1=T1, P1=P1, r_p=8, T3=TIT, eps=EPS, eta_c=ETA_C, eta_t=ETA_T)
+except errors.InputError as exc:
+    print(f"\nT3 given as turbine inlet in brayton_regen -> {type(exc).__name__}:\n{exc}")
+# With the guard off and ideal components no T4 fits, and the error says which state T3 is.
+try:
+    Cycle("brayton_regen", T1=T1, P1=P1, r_p=8, T3=TIT, eps=EPS, plausibility="off")
 except errors.NoSolutionError as exc:
-    print(f"\nT3 given as turbine inlet in brayton_regen (ideal) -> {type(exc).__name__}:\n{exc}\n")
+    print(f"\nSame call, guard off (ideal) -> {type(exc).__name__}:\n{exc}\n")
 
 # 3. Optimise the pressure ratio of the simple cycle for maximum specific work and for maximum efficiency.
 fixed = dict(T1=T1, P1=P1, T3=TIT, eta_c=ETA_C, eta_t=ETA_T)

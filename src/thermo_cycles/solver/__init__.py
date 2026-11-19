@@ -14,7 +14,7 @@ from ..errors import (ConvergenceError, CycleValidityWarning, InconsistentInputE
 from ..model.cycle_def import CycleDef
 from .advice import Requirements, analyse, raise_for
 from .numeric import SolveReport, _fmt, _solve, solve_numeric
-from .system import (PLAUSIBILITY_MODES, EquationSystem, build_system, check_plausibility_mode, resolve_inputs,
+from .system import (PLAUSIBILITY_MODES, state_mixup_text, EquationSystem, build_system, check_plausibility_mode, resolve_inputs,
                      resolve_name)
 
 __all__ = ["solve_cycle", "system_for", "REDUNDANT_RTOL", "CHECK_MODES",
@@ -326,6 +326,9 @@ def solve_cycle(defn: CycleDef, fluid, inputs: Mapping[str, object], *, allow_re
         if undefined_err is not None:
             raise undefined_err from e
         extra = _explain_no_solution(defn, active, e)
+        hint = state_mixup_text(defn, active)
+        if hint:
+            extra += "\n  Hint: " + hint
         if not extra:
             raise
         raise NoSolutionError(str(e) + extra, variables=e.variables, detail=e.detail) from e

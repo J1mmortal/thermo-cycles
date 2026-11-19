@@ -389,6 +389,20 @@ def check_plausibility_mode(plausibility: object) -> str:
     return plausibility
 
 
+def state_mixup_text(defn, given: "Mapping[str, float]") -> "str | None":
+    """The ``CycleDef.state_mixups`` message for the first given input at or above its limit, else None.
+
+    Example (brayton_regen): "T3 = 1250 K is the regenerator cold outlet in brayton_regen; the turbine inlet is
+    T4. Did you mean T4=1250?" """
+    for mx in getattr(defn, "state_mixups", ()) or ():
+        x = given.get(mx.given)
+        if x is not None and x >= mx.limit:
+            unit = " K" if mx.given[:1] == "T" else ""
+            return (f"{mx.given} = {x:g}{unit} is the {mx.given_role} in {defn.name}; the {mx.meant_role} is "
+                    f"{mx.meant}. Did you mean {mx.meant}={x:g}?")
+    return None
+
+
 def resolve_inputs(system: EquationSystem, raw: "Mapping[str, object]",
                    plausibility: str = "raise") -> "dict[str, float]":
     """Canonical names and validated float values of user inputs (spec 3 and 9.8), in the given order.
@@ -442,4 +456,11 @@ def resolve_inputs(system: EquationSystem, raw: "Mapping[str, object]",
                                      f"plausibility='warn' or plausibility='off'.")
                 warnings.warn(text, InputPlausibilityWarning, stacklevel=2)
         out[name] = x
+    if plausibility != "off" and system.cycle is not None:
+        text = state_mixup_text(system.cycle, out)
+        if text is not None:
+            if plausibility == "raise":
+                raise InputError(f"{cyc}: {text} If {text.split(' is the ')[0]} is really meant, pass "
+                                 f"plausibility='warn' or plausibility='off'.")
+            warnings.warn(text, InputPlausibilityWarning, stacklevel=2)
     return out

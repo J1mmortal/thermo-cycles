@@ -47,6 +47,18 @@ class ParamDef:
 
 
 @dataclass(frozen=True)
+class StateMixup:
+    """A likely numbering mistake: ``given`` (e.g. "T3") at or above ``limit`` (in its own unit) usually means the
+    user meant ``meant`` (e.g. "T4"). ``given_role`` and ``meant_role`` are the words used in the message."""
+
+    given: str
+    meant: str
+    limit: float
+    given_role: str
+    meant_role: str
+
+
+@dataclass(frozen=True)
 class CycleDef:
     """A cycle definition (spec 8.1).
 
@@ -75,6 +87,7 @@ class CycleDef:
     description: str = ""
     references: "tuple[str, ...]" = ()
     regenerators: "tuple[tuple[tuple[int, int], tuple[int, int]], ...]" = ()
+    state_mixups: "tuple[StateMixup, ...]" = ()
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -236,6 +249,10 @@ def validate_cycle(defn: CycleDef) -> None:
         bad = [s for s in ti if s not in variables]
         if bad:
             _fail(nm, f"typical_inputs {ti} name unknown variables {bad}")
+    for mx in defn.state_mixups:
+        bad = [s for s in (mx.given, mx.meant) if s not in variables]
+        if bad:
+            _fail(nm, f"state_mixups {mx.given}->{mx.meant} name unknown variables {bad}")
 
 
 def _validate_regenerators(defn: CycleDef, steps: "tuple[StepDef, ...]") -> None:

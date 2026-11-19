@@ -258,6 +258,12 @@ def describe(name: str) -> str:
     out += [f"  {st.a}->{st.b} {st.kind} ({st.role})"
             + (f", efficiency {st.efficiency}" if st.efficiency else "") for st in defn.steps]
     out += ["", "State roles:"] + [f"  {sid}: {words}" for sid, words in state_roles(defn).items()]
+    inlets = [sid for sid, words in state_roles(defn).items() if words.startswith("turbine inlet")]
+    if inlets:
+        out.append(f"Turbine inlet: T{inlets[0]}.")
+    for mx in defn.state_mixups:
+        out.append(f"Note: {mx.given} is the {mx.given_role}, not the {mx.meant_role}; a given {mx.given} >= "
+                   f"{mx.limit:g} K raises InputError (did you mean {mx.meant}?).")
     out += ["", "Parameters:"]
     if defn.params:
         for p in defn.params:

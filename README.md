@@ -81,8 +81,8 @@ Runnable versions are in `examples/quickstart.py`, `examples/brayton.py` (gas tu
 | `diesel` | closed | 1->2 isentropic; 2->3 **isobaric** heat_in; 3->4 isentropic; 4->1 isochoric heat_out | r_c = v1/v2; cutoff = v3/v2 | 4 | T1, P1, r_c + one of cutoff, T3, q_in |
 | `dual` | closed | 1->2 isentropic; 2->3 isochoric heat_in; 3->4 isobaric heat_in; 4->5 isentropic; 5->1 isochoric heat_out | r_c = v1/v2; alpha = P3/P2; cutoff = v4/v3 | 5 | T1, P1, r_c, alpha, cutoff; or T1, P1, r_c, P3, T4; or ..., q_in |
 | `atkinson` | closed | 1->2 isentropic; 2->3 isochoric heat_in; 3->4 isentropic exp **to P4 = P1**; 4->1 **isobaric** heat_out | r_c = v1/v2; r_e = v4/v3 | 4 | T1, P1, r_c + one of T3, q_in, P3, r_e |
-| `brayton` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric heat_in; 3->4 adiabatic exp (eta_t); 4->1 isobaric heat_out | r_p = P2/P1; eta_c = eta_t = 1 (defaults) | 4 (+2 defaulted) | T1, P1, r_p, T3 |
-| `brayton_regen` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric internal (regenerator cold side); 3->4 isobaric heat_in; 4->5 adiabatic exp (eta_t); 5->6 isobaric internal (regenerator hot side); 6->1 isobaric heat_out | r_p = P2/P1; eta_c, eta_t (default 1); eps = (h3−h2)/(h5−h2); dT_regen = T5−T3 | 5 (+2 defaulted) | T1, P1, r_p, T4, eps (or dT_regen) |
+| `brayton` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric heat_in; 3->4 adiabatic exp (eta_t); 4->1 isobaric heat_out (turbine inlet = T3) | r_p = P2/P1; eta_c = eta_t = 1 (defaults) | 4 (+2 defaulted) | T1, P1, r_p, T3 |
+| `brayton_regen` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric internal (regenerator cold side); 3->4 isobaric heat_in; 4->5 adiabatic exp (eta_t) (turbine inlet = T4; T3 is the regenerator cold outlet, a given T3 >= 1000 K raises InputError); 5->6 isobaric internal (regenerator hot side); 6->1 isobaric heat_out | r_p = P2/P1; eta_c, eta_t (default 1); eps = (h3−h2)/(h5−h2); dT_regen = T5−T3 | 5 (+2 defaulted) | T1, P1, r_p, T4, eps (or dT_regen) |
 
 Notes:
 - Dual numbering is 1..5. Cengel and Boles' state x is our 3, his 3 is our 4 and his 4 is our 5.

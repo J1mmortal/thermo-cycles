@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import math
 
-from ..model.cycle_def import CycleDef, ParamDef, StepDef, register_cycle
+from ..model.cycle_def import CycleDef, ParamDef, StateMixup, StepDef, register_cycle
 from ..model.relations import Relation, linear, ratio
 
 _ETA_BOUNDS = (0.0, 1.0)   # spec 8.2: 0 < eta <= 1 (eta = 0 is degenerate and fails in the efficiency relation)
@@ -86,6 +86,8 @@ BRAYTON_REGEN = CycleDef(
                 "passes the heat h5 - h6 of the turbine exhaust to the compressed air (h3 - h2).",
     references=("Cengel & Boles 7e SM 9-110",),
     regenerators=(((2, 3), (5, 6)),),
+    # T3 here is the regenerator cold outlet (materials limit ~ 1000 K), the turbine inlet is T4 (T0089).
+    state_mixups=(StateMixup("T3", "T4", 1000.0, "regenerator cold outlet", "turbine inlet"),),
 )
 
 register_cycle(BRAYTON, replace=True)

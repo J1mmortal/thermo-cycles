@@ -41,7 +41,7 @@ def test_describe_lists_state_roles():
 
 def test_trial_call_names_the_input_and_its_role():
     with pytest.raises(NoSolutionError) as ei:
-        Cycle("brayton_regen", T1=288.15, P1=101300, r_p=8, T3=1250, eps=.8)
+        Cycle("brayton_regen", T1=288.15, P1=101300, r_p=8, T3=1250, eps=.8, plausibility="off")
     msg = str(ei.value)
     # the original detail stays first
     assert msg.startswith("brayton_regen: no solution. relation 'h(T) 4' cannot be evaluated")
