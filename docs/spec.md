@@ -52,7 +52,7 @@ Goals (v0.1):
 - Validation against published worked examples plus closed-form property tests.
 
 Non-goals (v0.1): CLI or menu; CoolProp implementation; Stirling, Ericsson, Rankine, refrigeration (designed for
-and listed in §8.3; v0.2 adds `stirling` to the catalogue, §8.2); sensitivity analysis; unit parsing (inputs are SI floats); absolute (per-cycle-mass)
+and listed in §8.3; v0.2 adds `stirling` and `ericsson` to the catalogue, §8.2); sensitivity analysis; unit parsing (inputs are SI floats); absolute (per-cycle-mass)
 quantities; variable specific heats (a later `Fluid`, see §6.4).
 
 ## 2. Package name, layout, dependencies
@@ -139,7 +139,7 @@ import thermo_cycles as tc
 from thermo_cycles import Cycle, IdealGas, AIR, optimise, requirements, describe, list_cycles
 from thermo_cycles.units import kPa, bar, degC
 
-list_cycles()                       # ['atkinson', 'brayton', 'brayton_regen', 'diesel', 'dual', 'otto', 'stirling']
+list_cycles()                       # ['atkinson', 'brayton', 'brayton_regen', 'diesel', 'dual', 'ericsson', 'otto', 'stirling']
 print(describe("atkinson"))         # steps, state roles, parameters, degrees of freedom, typical inputs, refs
 
 c = Cycle("otto", T1=288, P1=100*kPa, r_c=10, q_in=1800e3)
@@ -456,6 +456,7 @@ parameter, which has a default. Each `extra_relation` takes away one.
 | `brayton` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric heat_in; 3->4 adiabatic exp (eta_t); 4->1 isobaric heat_out | r_p = P2/P1; eta_c = 1, eta_t = 1 (defaults) | 4 (+2 defaulted) | T1,P1,r_p,T3 |
 | `brayton_regen` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric internal (regen cold side); 3->4 isobaric heat_in; 4->5 adiabatic exp (eta_t); 5->6 isobaric internal (regen hot side); 6->1 isobaric heat_out | r_p = P2/P1; eta_c, eta_t (defaults 1); eps = (h3−h2)/(h5−h2); dT_regen = T5−T3; extra: h3−h2 = h5−h6; regenerators = ((2,3), (5,6)) | 5 (+2 defaulted) | T1,P1,r_p,T4,eps (or dT_regen) |
 | `stirling` (v0.2) | closed | 1->2 **isothermal** heat_out (compression at T_L); 2->3 isochoric internal (regen cold side); 3->4 isochoric heat_in (external top-up, 0 at eps = 1); 4->5 **isothermal** heat_in (expansion at T_H); 5->6 isochoric internal (regen hot side); 6->1 isochoric heat_out (0 at eps = 1) | r_c = v1/v2; eps = (u3−u2)/(u5−u2) (default 1, bounds [0, 1]); extra: u3−u2 = u5−u6; regenerators = ((2,3), (5,6)) | 4 (+1 defaulted) | T1,P1,r_c + one of T4, P4, q_in, w_net, eta_th |
+| `ericsson` (v0.2) | closed | 1->2 **isothermal** heat_out (compression at T_L); 2->3 isobaric internal (regen cold side, P_high); 3->4 isobaric heat_in (external top-up, 0 at eps = 1); 4->5 **isothermal** heat_in (expansion at T_H); 5->6 isobaric internal (regen hot side, P_low); 6->1 isobaric heat_out (0 at eps = 1) | r_p = P2/P1; eps = (h3−h2)/(h5−h2) (default 1, bounds [0, 1]); extra: h3−h2 = h5−h6; regenerators = ((2,3), (5,6)); v_max_state 5, v_min_state 2 | 4 (+1 defaulted) | T1,P1,r_p + one of T4, q_in, w_net, eta_th; or T1,P1,q_12,T4 |
 
 Notes:
 - Dual numbering is 1..5. Cengel's state x is our 3, his 3 is our 4 and his 4 is our 5. The reference tests map
@@ -476,13 +477,20 @@ Notes:
   heat the regenerator does not exchange, (1 − eps)·cv·(T_H − T_L); at eps = 1 they are zero steps (3 = 4, 6 = 1)
   and eta_th = 1 − T1/T4 (Carnot). Cengel's states 1, 2, 3, 4 (SM 9-80E, 9-81) are our 4, 5, 1, 2. The parameter is
   `r_c` (not `r`), as in every other piston cycle.
+- v0.2 `ericsson`: the same numbering, pair and roles as `stirling`, with isobaric regenerator streams and eps on h
+  (the external steps carry (1 − eps)·cp·(T_H − T_L)). System decision: `closed`, with mep = w_net/(v5 − v2)
+  (v5 = R·T_H/P1 is the largest, v2 = R·T_L/(r_p·P1) the smallest volume). A `flow` Ericsson would need its
+  isothermal compressor and turbine in both the heat tallies (q_in, q_out) and the work tallies (bwr), but a step
+  has exactly one role; tagging them `compression` / `expansion` would drop the isothermal heats from q_in / q_out
+  and give wrong eta_th. So bwr is not reported. Per unit mass every state, q_in, q_out, w_net and eta_th equal the
+  textbooks' steady-flow cycle (Cengel & Boles 5e Ch. 9 Problem 65 is posed as steady flow).
 
 ### 8.3 Later cycles: what each one needs
 
 | cycle | missing pieces |
 |---|---|
 | Stirling (isothermal compression and expansion, isochoric regeneration) | **done in v0.2** (`stirling`, §8.2; tests S1, S2 in §15.1). |
-| Ericsson (isothermal + isobaric regeneration) | catalogue entry only. |
+| Ericsson (isothermal + isobaric regeneration) | **done in v0.2** (`ericsson`, §8.2; test E1 in §15.1). A steady-flow variant with bwr would need steps with two roles (heat and work). |
 | Miller / over-expanded Atkinson (expansion to P4 > P1, then isochoric + isobaric rejection) | catalogue entry with 5 states. |
 | Rankine (pump, boiler, turbine, condenser) | `CoolPropFluid` with `x` as a property; inputs such as `x1=0` (saturated liquid at pump inlet) and `x3`; `saturation_curve()` for the dome on T-s; pump work on liquid. The step kinds are already two-phase-safe (§7.3). |
 | Vapour-compression refrigeration / heat pump | CoolProp plus the `isenthalpic` step kind; `CycleDef.kind = "refrigeration"` -> results report COP_R / COP_HP instead of eta_th, and Carnot COP instead of eta_Carnot. |
@@ -663,8 +671,12 @@ controls the final report.
   - Zero swept volume (closed cycles): v_max_state = v_min_state, so the MEP is undefined (e.g. r_c = 1).
   - Zero expansion work (flow cycles): |w_expansion| ≤ 1e-9·scale, so bwr is undefined (e.g. r_p = 1).
   - v0.2, no temperature difference: T_max = T_min within 1e-9 (and q_in not zero), so eta_carnot = 0 and
-    eta_ii = eta_th/eta_carnot is undefined (stirling with T4 = T1). The message names the isothermal heat-addition
+    eta_ii = eta_th/eta_carnot is undefined (stirling or ericsson with T4 = T1). The message names the isothermal heat-addition
     temperature to raise.
+  - v0.2, zero net work is a validity problem, not a defined-results one (eta_th = 0 is defined), so it follows
+    `check`: |w_net| ≤ 1e-9·scale with q_in > 0 means the cycle only heats and cools the gas and is not a power
+    cycle (ericsson with r_p = 1 and eps < 1; at eps = 1 the same input is a zero-heat cycle). The fix names a
+    parameter at its degenerate limit ("r_p = 1 ... raise r_p above 1").
 
   These raise `InvalidCycleError` with every `check` mode, `"off"` included. An undefined result is never
   returned. A divide-by-zero in one of these quotients during the solve gives the same error, not
@@ -681,7 +693,7 @@ controls the final report.
   largest step |q| or |w|), i.e. eps = 0) is the cycle without regeneration and the ordering rule is skipped,
   so brayton_regen with eps = 0 equals brayton at any r_p.
   v0.2: when the hot stream enters colder than the cold one, the fix names "lower r_c / r_p" only if the cycle
-  has a `compression` step (which sets T(a_c)); with isothermal compression (stirling) it names only the
+  has a `compression` step (which sets T(a_c)); with isothermal compression (stirling, ericsson) it names only the
   heat-addition temperatures.
 - Message example: "step 2->3 (isochoric, heat_in) has q = −120.4 kJ/kg < 0: T3 = 600 K is below T2 = 689.2 K.
   Raise T3 / q_in or lower r_c." v0.1.1: the advice is checked against the given inputs by a numeric
@@ -731,7 +743,7 @@ All results are computed from the solved values:
   path, so state extremes are path extremes. A unit test asserts this on sampled paths.
 - If q_in, v_max − v_min or w_expansion is zero (§9.7, defined results), the solve raises `InvalidCycleError`.
   No eta_th, mep or bwr is reported. v0.2: the same holds for T_max = T_min (eta_carnot = 0, so eta_ii is undefined;
-  only an all-isothermal cycle such as stirling with T4 = T1 gets there with heat input).
+  only an all-isothermal cycle such as stirling or ericsson with T4 = T1 gets there with heat input).
 - `eta_ii` = eta_th / eta_carnot.
 - `params`: all catalogue parameters, e.g. `r_e` for Atkinson and `cutoff` for Diesel, whether given or derived.
 - `StepResult` per step, with q, w and Δs.
@@ -868,6 +880,7 @@ Cengel's 1.005/0.718 by ≤ 0.07 %, so tolerances are rtol 3e-3 unless stated.
 | C1 | custom 3-step (via `register_cycle`) | Cengel & Boles 7e SM 9-24 (R 0.3, cv 0.7 kJ/kg·K; its "Properties" line misprints cv = 0.3) | isentropic 1->2, isobaric 2->3 heat_in, isochoric 3->1 heat_out; r = 5, T1 293 K, fluid `IdealGas(R=300, cv=700)` | T2 584.4 K, T3 2922 K, w_12 −204.0, w_23 701.3, q_23 2338, q_31 −1840.3 kJ/kg, eta 0.213 |
 | S1 | stirling (v0.2) | Cengel & Boles 7e SM 9-81 (R 0.287; SFU mirror `P 9_81.pdf`) | his state 3 = our 1: T1 298 K, P1 50 kPa, r_c 12, his P1 = our P4 3600 kPa | T4 1788 K (rtol 1e-9, independent of R), q_in 1275, q_out 212.5, w_net 1063 kJ/kg (rtol 1e-3) |
 | S2 | stirling (v0.2) | Cengel & Boles 7e SM 9-80E (same PDF) | T1 510 R, P1 10 psia, r_c 0.5/0.06 (V_max 0.5 ft³, V_min 0.06 ft³), eta_th 2.5/6 (2.5 Btu of 6 Btu) | T4 874 R (rtol 1e-3; exact 874.29), P_max = P4 143 psia (rtol 2e-3; exact 142.86), mass 0.5 ft³/v1 = 0.02647 lbm (rtol 1e-3) |
+| E1 | ericsson (v0.2) | Cengel & Boles 5e Ch. 9 Problem 65 (statement only, CSUN ME470 homework set; no printed answers found) | T1 300 K (27 °C), P1 120 kPa, q_12 = −150 kJ/kg (heat rejected in the isothermal compression), T4 1200 K; R 0.287 | hand calculation: P_max = 120·exp(150/(0.287·300)) = 685.16 kPa (rtol 1e-4), q_in 600, w_net 450 kJ/kg, eta_th 0.75 (rtol 1e-9) |
 
 The Cengel & Boles solution-manual pages were read from public course mirrors (Simon Fraser University ENSC 461 and
 Old Dominion University MET 330; URLs in Sources). These are McGraw-Hill copyrighted solutions. The tests cite them
@@ -955,6 +968,8 @@ computed is available as `diesel`, unchanged.
   `P 9_110.pdf`.
 - Cengel & Boles 8e solutions manual ch. 9 problems 9-33, 9-36E, 9-46, 9-57 (McGraw-Hill 2015), via ODU MET 330:
   https://sites.wp.odu.edu/met330fall24/wp-content/uploads/sites/37475/2025/03/HW1.3-solutions-1.pdf (pp. 1-4).
+- Cengel & Boles 5e, Chapter 9, Problem 65 (ideal Ericsson, statement only; test E1 uses a hand calculation), as
+  quoted in CSUN ME470 homework set: https://csun.edu/~sdijulio/ME470/Homework/ME470GasPowerCycleHw.pdf
 - Cengel & Boles 7e SM 9-65 (not used; error noted): https://www.mhtlab.uwaterloo.ca/courses/me354/assignments/pdffiles/cengel/9dash65.pdf
 - R.K. Rajput, *Engineering Thermodynamics*, ch. 13 "Gas Power Cycles", sec. 13.8 Atkinson cycle and Example 13.31
   (book pp. 657-660), scan at https://deewanbittal.wordpress.com/wp-content/uploads/2017/12/gas-power-cycles_rajpoot1.pdf

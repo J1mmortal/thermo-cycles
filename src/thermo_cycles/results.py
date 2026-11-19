@@ -158,6 +158,7 @@ def validity_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple
       input the scale is the largest step |q| or |w| instead of q_in);
     - results defined: no zero heat input, no zero swept volume (closed), no zero expansion work (flow), see
       ``undefined_results``; ``solve_cycle`` raises on these in every check mode;
+    - v0.2: zero net work with q_in > 0 (|w_net| <= 1e-9 x the largest step |q| or |w|): not a power cycle;
     - parameters inside their bounds;
     - regenerator (role ``internal`` steps): heat flows hot to cold, see ``_internal_problems``.
 
@@ -209,6 +210,12 @@ def validity_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple
     if not q_in > 0 and not _zero_heat(values, steps):
         problems.append(f"q_in = {q_in / 1e3:.1f} kJ/kg is not > 0: the heat_in steps take in no net heat, so "
                         f"this is not a power cycle.")
+    elif q_in > 0 and abs(float(values["w_net"])) <= ZERO_RTOL * _step_scale(steps):
+        # v0.2 (ericsson r_p = 1 with eps < 1): heat goes in and out at constant pressure, no work is done.
+        fix = _degenerate_params(defn, values) or ["give the cycle a compression and an expansion"]
+        problems.append(f"zero net work: w_net = 0.0 kJ/kg with q_in = {q_in / 1e3:.1f} kJ/kg (eta_th = 0): the "
+                        f"cycle only heats and cools the gas, so this is not a power cycle. "
+                        f"Fix: {'; or '.join(fix)}.")
     problems += undefined
     problems += _internal_problems(defn, values, steps, q_in)
     for p in defn.params:

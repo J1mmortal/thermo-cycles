@@ -8,7 +8,7 @@ def test_describe_atkinson():
     assert "r_e" in text and "needs 4 inputs" in text and "Rajput" in text
 
 def test_list_cycles_v1():
-    assert tc.list_cycles() == ["atkinson", "brayton", "brayton_regen", "diesel", "dual", "otto", "stirling"]
+    assert tc.list_cycles() == ["atkinson", "brayton", "brayton_regen", "diesel", "dual", "ericsson", "otto", "stirling"]
 
 EXAMPLES = ["quickstart.py", "old_modes_migrated.py", "brayton.py"]
 

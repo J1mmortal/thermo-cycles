@@ -76,6 +76,8 @@ _REGULAR = [
     ("otto", {"T1": 288.0, "r_c": 10.0, "q_in": 1.8e6, "P3": 11216.6e3}),
     ("stirling", {"T1": 298.0, "P1": 50e3, "r_c": 12.0, "P4": 3600e3}),          # Cengel 7e SM 9-81
     ("stirling", {"T1": 300.0, "P1": 1e5, "eps": 0.7, "r_c": 8.0, "eta_th": 0.5}),     # backward: T4 from eta
+    ("ericsson", {"T1": 300.0, "P1": 120e3, "q_12": -150e3, "T4": 1200.0}),      # Cengel & Boles 5e P9-65
+    ("ericsson", {"T1": 300.0, "P1": 1e5, "eps": 0.6, "r_p": 6.0, "eta_th": 0.4}),     # backward: T4 from eta
 ]
 
 

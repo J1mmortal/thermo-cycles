@@ -70,3 +70,32 @@ STIRLING = CycleDef(
 )
 
 register_cycle(STIRLING, replace=True)
+
+
+_ERICSSON_EPS, _ERICSSON_BALANCE = _regen("h")
+
+ERICSSON = CycleDef(
+    name="ericsson", title="Ideal Ericsson cycle (air-standard, regenerator effectiveness eps)", aliases=(),
+    system="closed",
+    states=(1, 2, 3, 4, 5, 6),
+    steps=(StepDef("isothermal", 1, 2, "heat_out"), StepDef("isobaric", 2, 3, "internal"),
+           StepDef("isobaric", 3, 4, "heat_in"), StepDef("isothermal", 4, 5, "heat_in"),
+           StepDef("isobaric", 5, 6, "internal"), StepDef("isobaric", 6, 1, "heat_out")),
+    params=(ParamDef("r_p", "pressure ratio P2/P1 (> 1)", ratio("r_p", "P2", "P1"), bounds=(1.0, math.inf)),
+            _ERICSSON_EPS),
+    extra_relations=(_ERICSSON_BALANCE,),
+    v_max_state=5, v_min_state=2,
+    suggest=("r_p", "T4", "q_in", "eps"),
+    typical_inputs=(("T1", "P1", "r_p", "T4"), ("T1", "P1", "r_p", "q_in"), ("T1", "P1", "q_12", "T4"),
+                    ("T1", "P1", "r_p", "T4", "eps")),
+    description="Isothermal compression at T_L (1->2, heat rejected), constant-pressure regenerator cold side "
+                "(2->3), constant-pressure external heating to T_H (3->4, zero at eps = 1), isothermal expansion "
+                "at T_H (4->5, heat added), constant-pressure regenerator hot side (5->6), constant-pressure "
+                "external cooling to T_L (6->1, zero at eps = 1). eps = 1 (default) is the ideal cycle with "
+                "Carnot efficiency 1 - T1/T4. Modelled as a closed (piston) cycle with an MEP over v5 - v2; per "
+                "unit mass it equals the steady-flow Ericsson cycle (isothermal compressor and turbine).",
+    references=("Cengel & Boles 5e Ch. 9 Problem 65",),
+    regenerators=(((2, 3), (5, 6)),),
+)
+
+register_cycle(ERICSSON, replace=True)

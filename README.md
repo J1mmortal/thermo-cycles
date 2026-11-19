@@ -37,7 +37,7 @@ import thermo_cycles as tc
 from thermo_cycles import Cycle, IdealGas, optimise, requirements, describe
 from thermo_cycles.units import kPa, bar, degC
 
-tc.list_cycles()            # ['atkinson', 'brayton', 'brayton_regen', 'diesel', 'dual', 'otto', 'stirling']
+tc.list_cycles()            # ['atkinson', 'brayton', 'brayton_regen', 'diesel', 'dual', 'ericsson', 'otto', 'stirling']
 print(describe("atkinson")) # steps, parameters, degrees of freedom, typical input sets, references
 
 c = Cycle("otto", T1=288, P1=100 * kPa, r_c=10, q_in=1800e3)
@@ -78,7 +78,8 @@ Runnable versions are in `examples/quickstart.py`, `examples/brayton.py` (gas tu
   `describe(name)` lists the role of every state; `examples/brayton.py` shows both cycles, `optimise` over
   r_p for maximum w_net and maximum eta_th, and the regenerator cut-off pressure ratio.
 - Ideal regenerative engine with isothermal compression and expansion -> `stirling` (constant-volume
-  regenerator). With `eps = 1` it reaches the Carnot efficiency, a good check of second-law reasoning.
+  regenerator) or `ericsson` (constant-pressure regenerator). With `eps = 1` both reach the Carnot efficiency,
+  a good check of second-law reasoning.
 
 ## Catalogue (v0.2)
 
@@ -91,6 +92,7 @@ Runnable versions are in `examples/quickstart.py`, `examples/brayton.py` (gas tu
 | `brayton` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric heat_in; 3->4 adiabatic exp (eta_t); 4->1 isobaric heat_out (turbine inlet = T3) | r_p = P2/P1; eta_c = eta_t = 1 (defaults) | 4 (+2 defaulted) | T1, P1, r_p, T3 |
 | `brayton_regen` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric internal (regenerator cold side); 3->4 isobaric heat_in; 4->5 adiabatic exp (eta_t) (turbine inlet = T4; T3 is the regenerator cold outlet, a given T3 >= 1000 K raises InputError); 5->6 isobaric internal (regenerator hot side); 6->1 isobaric heat_out | r_p = P2/P1; eta_c, eta_t (default 1); eps = (h3−h2)/(h5−h2); dT_regen = T5−T3 | 5 (+2 defaulted) | T1, P1, r_p, T4, eps (or dT_regen) |
 | `stirling` | closed | 1->2 **isothermal** heat_out (compression at T_L); 2->3 isochoric internal (regenerator cold side); 3->4 isochoric heat_in (external, 0 at eps = 1); 4->5 **isothermal** heat_in (expansion at T_H); 5->6 isochoric internal (regenerator hot side); 6->1 isochoric heat_out (0 at eps = 1) | r_c = v1/v2; eps = (u3−u2)/(u5−u2) (default 1) | 4 (+1 defaulted) | T1, P1, r_c + one of T4, P4, q_in |
+| `ericsson` | closed | 1->2 **isothermal** heat_out (compression at T_L); 2->3 isobaric internal (regenerator cold side, P_high); 3->4 isobaric heat_in (external, 0 at eps = 1); 4->5 **isothermal** heat_in (expansion at T_H); 5->6 isobaric internal (regenerator hot side, P_low); 6->1 isobaric heat_out (0 at eps = 1) | r_p = P2/P1; eps = (h3−h2)/(h5−h2) (default 1) | 4 (+1 defaulted) | T1, P1, r_p + one of T4, q_in; or T1, P1, q_12, T4 |
 
 Notes:
 - Dual numbering is 1..5. Cengel and Boles' state x is our 3, his 3 is our 4 and his 4 is our 5.
@@ -100,6 +102,11 @@ Notes:
   the pair 2->3 / 5->6 as in `brayton_regen`. T1 is the cold and T4 = T5 the hot temperature. With eps = 1
   (default) steps 3->4 and 6->1 are zero steps and eta_th = 1 − T1/T4 (Carnot). Cengel and Boles' states
   1, 2, 3, 4 (SM 9-80E, 9-81) are our 4, 5, 1, 2.
+- `ericsson` (v0.2) has the same numbering and regenerator pair, with constant-pressure regenerator streams
+  (eps on h). It is a `closed` cycle (MEP over v5 − v2, the largest and smallest volumes), not a `flow` one: a
+  step has one role, and the isothermal steps must be heat roles for q_in / q_out, so a flow version would have
+  no compression / expansion steps for bwr. Per unit mass q_in, q_out, w_net and eta_th equal the textbooks'
+  steady-flow Ericsson cycle. r_p = 1 with eps < 1 is rejected as "zero net work".
 - Validity bounds: cutoff ≥ 1, alpha ≥ 1, r_c, r_e, r_p ≥ 1 at input but > 1 in effect (r = 1 is rejected as a zero-heat / zero-swept-volume / zero-expansion-work cycle), 0 < eta_c, eta_t ≤ 1, 0 ≤ eps ≤ 1. Atkinson's r_e > r_c is not a declared bound; a violation is caught by the step 2->3 validity check.
 - Your own cycle: `register_cycle(CycleDef(...))`, about 20 lines of data and no solver code (spec §8.1):
 

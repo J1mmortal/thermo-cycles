@@ -4,7 +4,7 @@ from . import piston  # noqa: F401  (registers otto, diesel, dual, atkinson)
 from .piston import ATKINSON, DIESEL, DUAL, OTTO
 from . import gas_turbine  # noqa: F401  (registers brayton, brayton_regen)
 from .gas_turbine import BRAYTON, BRAYTON_REGEN
-from . import regenerative  # noqa: F401  (registers stirling)
+from . import regenerative  # noqa: F401  (registers stirling, ericsson)
 from .regenerative import STIRLING
 
 __all__ = ["OTTO", "DIESEL", "DUAL", "ATKINSON", "BRAYTON", "BRAYTON_REGEN", "STIRLING"]
