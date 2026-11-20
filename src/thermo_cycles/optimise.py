@@ -21,7 +21,7 @@ import math
 import numbers
 import warnings
 from collections.abc import Mapping as _MappingABC
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Callable, Mapping
 
@@ -72,7 +72,9 @@ class OptimisationResult:
     evaluations: int
     history: "tuple[tuple[Mapping[str, float], float | None, bool], ...]"
     message: str
-    at_bound: Mapping[str, str] = MappingProxyType({})
+    # default_factory, not a shared default: Python 3.11 rejects an unhashable class instance (mappingproxy) as a
+    # dataclass default (ValueError); a factory also gives every result its own read-only mapping.
+    at_bound: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
     def __repr__(self) -> str:
         """Short: the optimum with units, the active limits and the evaluation count (v0.1.1); the evaluation
