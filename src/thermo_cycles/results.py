@@ -14,7 +14,7 @@ from .model.steps import KINDS
 from .state import PROPS, State
 
 __all__ = ["StepResult", "CycleResults", "compute_results", "validity_problems", "HEAT_SIGN_RTOL",
-           "step_results", "undefined_results", "ZERO_RTOL"]
+           "step_results", "undefined_results", "ZERO_RTOL", "generic_heat_fix"]
 
 # Spec 9.7: heat_in steps need q >= -1e-9 q_in (so q = 0 is a valid limiting case, e.g. Dual with alpha = 1),
 # heat_out steps q <= 1e-9 q_in.
@@ -139,7 +139,17 @@ def _K(x: float) -> str:
     return f"{x:.5g} K"
 
 
-def validity_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple[StepResult, ...]") -> "list[str]":
+def generic_heat_fix(defn: CycleDef, b: int) -> "tuple[tuple[str, ...], tuple[str, ...], str]":
+    """The input-independent advice for a heat_in step a->b with q < 0 (spec 9.7 example): names to raise, names
+    to lower, and the text "T3 / q_in or lower r_c"."""
+    lower = tuple(p.name for p in defn.params if p.name in _COMPRESSION_PARAMS)
+    fix = " / ".join((f"T{b}", "q_in"))
+    fix += f" or lower {' / '.join(lower)}" if lower else " or reduce the compression"
+    return (f"T{b}", "q_in"), lower, fix
+
+
+def validity_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple[StepResult, ...]",
+                      hints: "Mapping[tuple[int, int], str] | None" = None) -> "list[str]":
     """Every physical-validity problem of a solved cycle (spec 9.7), as messages; empty when the cycle is valid.
 
     - all T, P, v > 0 (main and hidden states);
@@ -152,7 +162,8 @@ def validity_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple
     - regenerator (role ``internal`` steps): heat flows hot to cold, see ``_internal_problems``.
 
     Messages name the step and say what to change, e.g. "step 2->3 (isochoric, heat_in) has q = -120.4 kJ/kg < 0:
-    T3 = 600 K is below T2 = 689.2 K. Raise T3 / q_in or lower r_c."
+    T3 = 600 K is below T2 = 689.2 K. Raise T3 / q_in or lower r_c." ``hints`` (v0.1.1, from ``solve_cycle``)
+    replaces that advice (a full sentence) per heat_in step ``(a, b)`` with one that fits the given inputs.
     """
     problems: "list[str]" = []
     for sid in state_ids(defn):
@@ -166,7 +177,6 @@ def validity_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple
     # Spec 9.7 scales the heat-sign tolerance with q_in. With zero heat input that scale is itself ~0 and every
     # rounding-level q would be reported as a sign problem, so the cycle's step scale is used instead.
     tol = HEAT_SIGN_RTOL * (_step_scale(steps) if _zero_heat(values, steps) else abs(q_in))
-    lower = [p.name for p in defn.params if p.name in _COMPRESSION_PARAMS]
     for st in steps:
         a, b = st.a, st.b
         label = f"step {a}->{b} ({st.kind}, {st.role})"
@@ -189,9 +199,8 @@ def validity_problems(defn: CycleDef, values: Mapping[str, float], steps: "tuple
         elif st.role == "heat_in":
             if not st.q >= -tol:
                 why = f"T{b} = {_K(Tb)} is below T{a} = {_K(Ta)}. " if Tb < Ta else ""
-                fix = " / ".join((f"T{b}", "q_in"))
-                fix += f" or lower {' / '.join(lower)}" if lower else " or reduce the compression"
-                problems.append(f"{label} has q = {st.q / 1e3:.1f} kJ/kg < 0: {why}Raise {fix}.")
+                advice = (hints or {}).get((a, b)) or f"Raise {generic_heat_fix(defn, b)[2]}."
+                problems.append(f"{label} has q = {st.q / 1e3:.1f} kJ/kg < 0: {why}{advice}")
         elif st.role == "heat_out":
             if not st.q <= tol:
                 why = f"T{b} = {_K(Tb)} is above T{a} = {_K(Ta)}, so " if Tb > Ta else ""
@@ -245,6 +254,11 @@ def _internal_problems(defn: CycleDef, values: Mapping[str, float], steps: "tupl
     by_ab = {(st.a, st.b): st for st in internal}
     for (cold_ab, hot_ab) in defn.regenerators:
         cold, hot = by_ab[tuple(cold_ab)], by_ab[tuple(hot_ab)]
+        # v0.1.1: no heat exchanged (eps = 0, within 1e-9 of the cycle's scale) is the cycle without a
+        # regenerator; the hot/cold ordering rule only applies when heat actually flows (T0091 open issue 4).
+        q_zero = HEAT_SIGN_RTOL * max(abs(q_in), _step_scale(steps))
+        if abs(cold.q) <= q_zero and abs(hot.q) <= q_zero:
+            continue
         ci, co, hi, ho = cold.a, cold.b, hot.a, hot.b
         T = {k: float(values[f"T{k}"]) for k in (ci, co, hi, ho)}
         tol = REGEN_T_RTOL * max(abs(x) for x in T.values())

@@ -92,8 +92,12 @@ def _dome(ax, fluid, kind, P_unit, s_unit):
     ax.plot(x, y, color="0.5", lw=1.0, gid="saturation dome", label=_NOLEGEND)
 
 
+# state-label offsets (points) per overlaid cycle: the 2nd and later cycles of plot_cycles also get primes (3', 3'')
+_LABEL_OFFSETS = ((5, 5), (5, -13), (-13, 5), (-13, -13))
+
+
 def _draw_panel(cycle, ax, kind, *, n, show_states, show_hidden, logscale_P, P_unit, s_unit, label, arrows,
-                colour, line_kw):
+                colour, line_kw, index=0):
     get, xlabel, ylabel = _xy(kind, P_unit, s_unit)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
@@ -104,6 +108,7 @@ def _draw_panel(cycle, ax, kind, *, n, show_states, show_hidden, logscale_P, P_u
         _dome(ax, fluid, kind, P_unit, s_unit)
         ax._thermo_cycles_dome = True
     states, hidden = cycle.states, cycle.hidden_states
+    suffix, offset = "'" * index, _LABEL_OFFSETS[index % len(_LABEL_OFFSETS)]
     labelled = False
     for st in cycle.definition.steps:
         k = KINDS[st.kind]
@@ -131,12 +136,13 @@ def _draw_panel(cycle, ax, kind, *, n, show_states, show_hidden, logscale_P, P_u
                 hx, hy = get(hs)
                 ax.plot([hx], [hy], linestyle="none", marker="o", markerfacecolor="none", color=colour,
                         gid=f"hidden {hid}", label=_NOLEGEND)
-                ax.annotate(hid, (hx, hy), textcoords="offset points", xytext=(5, 5), fontsize=8, color=colour)
+                ax.annotate(hid + suffix, (hx, hy), textcoords="offset points", xytext=offset, fontsize=8,
+                            color=colour)
     if show_states:
         for sid, s in states.items():
             x, y = get(s)
             ax.plot([x], [y], linestyle="none", marker="o", color=colour, gid=f"state {sid}", label=_NOLEGEND)
-            ax.annotate(str(sid), (x, y), textcoords="offset points", xytext=(5, 5), color=colour)
+            ax.annotate(str(sid) + suffix, (x, y), textcoords="offset points", xytext=offset, color=colour)
 
 
 def _setup_axes(plt, kind, ax):
@@ -173,7 +179,8 @@ def plot_cycle(cycle, kind="Ts", *, ax=None, n=100, show_states=True, show_hidde
 
 def plot_cycles(cycles: Sequence, kind="Ts", *, ax=None, labels=None, **kw) -> Any:
     """Overlay several cycles on one set of axes, each in its own colour, with a legend when ``labels`` is
-    given. Keywords as for :func:`plot_cycle`."""
+    given. Keywords as for :func:`plot_cycle`. State labels of the second and later cycles carry primes (3', 3'')
+    and a different offset so they do not collide with the first cycle's; solid and dashed steps as for one cycle."""
     cycles = list(cycles)
     if not cycles:
         raise InputError("plot_cycles needs at least one cycle.")
@@ -198,7 +205,8 @@ def _plot_many(cycles, kind, *, ax, labels, line_kw, n=100, show_states=True, sh
         colour = kw.pop("color", None) or kw.pop("c", None) or _colour(i)
         for pk, pax in panels.items():
             _draw_panel(c, pax, pk, n=n, show_states=show_states, show_hidden=show_hidden, logscale_P=logscale_P,
-                        P_unit=P_unit, s_unit=s_unit, label=lab, arrows=arrows, colour=colour, line_kw=kw)
+                        P_unit=P_unit, s_unit=s_unit, label=lab, arrows=arrows, colour=colour, line_kw=kw,
+                        index=i)
     if any(lab is not None for lab in labels):
         for pax in panels.values():
             pax.legend()

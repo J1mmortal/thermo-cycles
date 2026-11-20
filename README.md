@@ -5,10 +5,23 @@ every state, every process step, the standard results, margins to your limits, a
 process curves. It is the thermodynamics sibling of
 [rocket-analysis-toolkit](https://github.com/J1mmortal/rocket-analysis-toolkit).
 
-The package is `thermo_cycles` (distribution `thermo-cycles`, version 0.1.0, Python ≥ 3.10, MIT licence). Core
+The package is `thermo_cycles` (distribution `thermo-cycles`, version 0.1.1, Python ≥ 3.10, MIT licence). Core
 dependencies are numpy and scipy. matplotlib is optional and only needed for plots.
 
 ## Install
+
+```
+pip install "thermo-cycles[plot]"
+```
+
+The `[plot]` extra adds matplotlib; leave it out (`pip install thermo-cycles`) if you do not need plots. This line
+works once the first release is on PyPI. Until then, or to follow the main branch, install from GitHub:
+
+```
+pip install "thermo-cycles[plot] @ git+https://github.com/J1mmortal/thermo-cycles"
+```
+
+For development (tests included):
 
 ```
 git clone https://github.com/J1mmortal/thermo-cycles
@@ -53,8 +66,17 @@ res.x, res.value, res.active
 c.plot("Ts"); c.plot("Pv", logscale_P=True); tc.plot_cycles([c, c2], "Ts")
 ```
 
-Runnable versions are in `examples/quickstart.py` and `examples/old_modes_migrated.py`. Design notes and the full
-contract are in `docs/spec.md`.
+Runnable versions are in `examples/quickstart.py`, `examples/brayton.py` (gas turbines) and
+`examples/old_modes_migrated.py`. Design notes and the full contract are in `docs/spec.md`.
+
+## Which cycle?
+
+- Spark-ignition (petrol) engine -> `otto`; compression-ignition (diesel) engine -> `diesel`, or `dual` for
+  part constant-volume, part constant-pressure combustion; over-expanded engine -> `atkinson`.
+- Gas turbine -> `brayton` / `brayton_regen` (with a regenerator). Mind the numbering: the turbine inlet is
+  **T3** in `brayton` but **T4** in `brayton_regen` (there T3 is the regenerator cold-side outlet).
+  `describe(name)` lists the role of every state; `examples/brayton.py` shows both cycles, `optimise` over
+  r_p for maximum w_net and maximum eta_th, and the regenerator cut-off pressure ratio.
 
 ## Catalogue (v0.1)
 
@@ -64,22 +86,37 @@ contract are in `docs/spec.md`.
 | `diesel` | closed | 1->2 isentropic; 2->3 **isobaric** heat_in; 3->4 isentropic; 4->1 isochoric heat_out | r_c = v1/v2; cutoff = v3/v2 | 4 | T1, P1, r_c + one of cutoff, T3, q_in |
 | `dual` | closed | 1->2 isentropic; 2->3 isochoric heat_in; 3->4 isobaric heat_in; 4->5 isentropic; 5->1 isochoric heat_out | r_c = v1/v2; alpha = P3/P2; cutoff = v4/v3 | 5 | T1, P1, r_c, alpha, cutoff; or T1, P1, r_c, P3, T4; or ..., q_in |
 | `atkinson` | closed | 1->2 isentropic; 2->3 isochoric heat_in; 3->4 isentropic exp **to P4 = P1**; 4->1 **isobaric** heat_out | r_c = v1/v2; r_e = v4/v3 | 4 | T1, P1, r_c + one of T3, q_in, P3, r_e |
-| `brayton` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric heat_in; 3->4 adiabatic exp (eta_t); 4->1 isobaric heat_out | r_p = P2/P1; eta_c = eta_t = 1 (defaults) | 4 (+2 defaulted) | T1, P1, r_p, T3 |
-| `brayton_regen` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric internal (regenerator cold side); 3->4 isobaric heat_in; 4->5 adiabatic exp (eta_t); 5->6 isobaric internal (regenerator hot side); 6->1 isobaric heat_out | r_p = P2/P1; eta_c, eta_t (default 1); eps = (h3−h2)/(h5−h2); dT_regen = T5−T3 | 5 (+2 defaulted) | T1, P1, r_p, T4, eps (or dT_regen) |
+| `brayton` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric heat_in; 3->4 adiabatic exp (eta_t); 4->1 isobaric heat_out (turbine inlet = T3) | r_p = P2/P1; eta_c = eta_t = 1 (defaults) | 4 (+2 defaulted) | T1, P1, r_p, T3 |
+| `brayton_regen` | flow | 1->2 adiabatic comp (eta_c); 2->3 isobaric internal (regenerator cold side); 3->4 isobaric heat_in; 4->5 adiabatic exp (eta_t) (turbine inlet = T4; T3 is the regenerator cold outlet, a given T3 >= 1000 K raises InputError); 5->6 isobaric internal (regenerator hot side); 6->1 isobaric heat_out | r_p = P2/P1; eta_c, eta_t (default 1); eps = (h3−h2)/(h5−h2); dT_regen = T5−T3 | 5 (+2 defaulted) | T1, P1, r_p, T4, eps (or dT_regen) |
 
 Notes:
 - Dual numbering is 1..5. Cengel and Boles' state x is our 3, his 3 is our 4 and his 4 is our 5.
 - Atkinson MEP uses v_max = v4 (not v1), because r_e > r_c.
 - `brayton_regen` numbering equals Cengel and Boles 9-110, including the hidden states 2s and 5s.
 - Validity bounds: cutoff ≥ 1, alpha ≥ 1, r_c, r_e, r_p ≥ 1 at input but > 1 in effect (r = 1 is rejected as a zero-heat / zero-swept-volume / zero-expansion-work cycle), 0 < eta_c, eta_t ≤ 1, 0 ≤ eps ≤ 1. Atkinson's r_e > r_c is not a declared bound; a violation is caught by the step 2->3 validity check.
-- Your own cycle: `register_cycle(CycleDef(...))`, about 20 lines of data and no solver code (spec §8.1).
+- Your own cycle: `register_cycle(CycleDef(...))`, about 20 lines of data and no solver code (spec §8.1):
+
+  ```python
+  from thermo_cycles.custom import CycleDef, StepDef, ParamDef, ratio, register_cycle
+
+  register_cycle(CycleDef(
+      name="three_step", title="isentropic, isobaric, isochoric", aliases=(), system="closed", states=(1, 2, 3),
+      steps=(StepDef("isentropic", 1, 2, "compression"), StepDef("isobaric", 2, 3, "heat_in"),
+             StepDef("isochoric", 3, 1, "heat_out")),
+      params=(ParamDef("r_c", "compression ratio v1/v2", ratio("r_c", "v1", "v2")),),
+      v_max_state=1, v_min_state=2))
+  Cycle("three_step", T1=293, P1=1e5, r_c=5)
+  ```
+
+  `thermo_cycles.custom` also has `linear`, `equal`, `product`, `fixed` and `Relation`.
 
 ## Conventions
 
 - **SI everywhere, per unit mass.** T [K], P [Pa], v [m³/kg], u, h [J/kg], s [J/(kg·K)], q, w [J/kg], MEP [Pa].
   Ratios and efficiencies are fractions (0.62, not 62 %). Margins in % are labelled `_pct`.
 - `thermo_cycles.units` gives constants (`P1=1*bar`, `T1=degC(25)`). The library never converts silently. A given
-  P below 1 000 Pa or T below 100 K raises `InputPlausibilityWarning`, because that usually means kPa or °C.
+  P below 1 000 Pa or T below 100 K raises `InputError`, because that usually means kPa, bar or °C; pass
+  `plausibility="warn"` (warning only) or `"off"` when such a value is really meant.
 - **Signs:** q > 0 is heat into the fluid, w > 0 is work done by the fluid. Closed steps follow q − w = Δu, flow
   steps q − w = Δh. Compression work is negative. `q_in` and `q_out` are positive magnitudes.
 - **States** are numbered from 1 (start of compression). Hidden isentropic end points of non-ideal steps are

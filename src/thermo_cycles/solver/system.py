@@ -12,7 +12,7 @@ from typing import Mapping
 
 import numpy as np
 
-from ..errors import InputError, InputPlausibilityWarning, UnknownInputError
+from ..errors import CycleDefinitionError, InputError, InputPlausibilityWarning, UnknownInputError
 from ..fluids.ideal_gas import IdealGas
 from ..model.cycle_def import CycleDef, result_vars, state_ids, step_vars, validate_cycle
 from ..model.relations import Relation, default_scale, fixed, linear, product
@@ -212,11 +212,11 @@ def build_system(defn: CycleDef, fluid) -> EquationSystem:
     # every relation must only use known variables
     vset = set(variables)
     if len(vset) != len(variables):
-        raise ValueError(f"cycle {defn.name!r}: duplicate variable names in the equation system")
+        raise CycleDefinitionError(f"cycle {defn.name!r}: duplicate variable names in the equation system")
     for r in relations:
         bad = [v for v in r.vars if v not in vset]
         if bad:
-            raise ValueError(f"cycle {defn.name!r}: relation {r.name!r} uses unknown variables {bad}")
+            raise CycleDefinitionError(f"cycle {defn.name!r}: relation {r.name!r} uses unknown variables {bad}")
 
     # ideal-gas equivalents: u_k and h_k carry the same information as T_k
     equivalent = {}
@@ -284,6 +284,35 @@ def _with_unit(value: float, unit: str) -> str:
     return f"{value:g} {unit}" if unit else f"{value:g}"
 
 
+def known_names_text(system: EquationSystem, noun: str = "inputs") -> str:
+    """Compact list of every name ``resolve_name`` accepts, grouped (v0.1.1), e.g. "Known inputs: state
+    properties T, P, v, u, h, s at states 1, 2, 3, 4 (e.g. T3; hidden states 2s, 4s); parameters r_p, ...;
+    step heat and work q_12, w_12, ...; cycle quantities q_in, ... (see describe('brayton'))."
+    """
+    defn = system.cycle
+    if defn is None:
+        return f"Known {noun}: {', '.join(system.variables)}."
+    sids = state_ids(defn)
+    main = [str(k) for k in defn.states]
+    hidden = [h for h in sids if h not in main]
+    state_vars = {f"{p}{sid}" for sid in sids for p in _STATE_PROPS}
+    params = [p.name for p in defn.params]
+    steps = [v for v in system.variables if v[:2] in ("q_", "w_") and v[2:].isdigit()]
+    other = [v for v in system.variables if v not in state_vars and v not in params and v not in steps]
+    parts = [f"state properties {', '.join(_STATE_PROPS)} at states {', '.join(main)} (e.g. T{main[-1]}"
+             + (f"; hidden states {', '.join(hidden)})" if hidden else ")")]
+    if params:
+        parts.append(f"parameters {', '.join(params)}")
+    if steps:
+        parts.append(f"step heat and work {', '.join(steps)}")
+    if other:
+        parts.append(f"cycle quantities {', '.join(other)}")
+    return f"Known {noun}: " + "; ".join(parts) + f" (see describe({defn.name!r}))."
+
+
+_STATE_PROPS = ("T", "P", "v", "u", "h", "s")
+
+
 def resolve_name(system: EquationSystem, name: object) -> str:
     """Canonical variable name for ``name`` (spec 3): exact, then unique case-insensitive, then alias.
 
@@ -323,8 +352,12 @@ def resolve_name(system: EquationSystem, name: object) -> str:
     hint = f" Did you mean: {', '.join(sugg)}?" if sugg else ""
     if len(meanings) > 1 and key in _AMBIGUOUS_NOTE:
         hint += " " + _AMBIGUOUS_NOTE[key]
-    raise UnknownInputError(f"{cyc}: unknown input {name!r}.{hint}", name=name, suggestions=tuple(sugg),
-                            accepted=system.variables)
+    sid = name[1:]
+    if (system.cycle is not None and name[:1] in _STATE_PROPS and sid and sid not in state_ids(system.cycle)
+            and (sid.isdigit() or sid[:-1].isdigit())):
+        hint += f" {cyc} has no state {sid} (states: {', '.join(str(k) for k in system.cycle.states)})."
+    raise UnknownInputError(f"{cyc}: unknown input {name!r}.{hint}\n  {known_names_text(system)}", name=name,
+                            suggestions=tuple(sugg), accepted=system.variables)
 
 
 def _to_float(cyc: str, name: str, value: object) -> float:
@@ -344,7 +377,34 @@ def _to_float(cyc: str, name: str, value: object) -> float:
     return x
 
 
-def resolve_inputs(system: EquationSystem, raw: "Mapping[str, object]") -> "dict[str, float]":
+PLAUSIBILITY_MODES = ("raise", "warn", "off")
+PLAUSIBLE_P_MIN = 1000.0     # Pa: a given state pressure below this usually means kPa or bar (spec 3, 9.8)
+PLAUSIBLE_T_MIN = 100.0      # K: a given state temperature below this usually means deg C (spec 3, 9.8)
+
+
+def check_plausibility_mode(plausibility: object) -> str:
+    """``plausibility`` validated against ``PLAUSIBILITY_MODES`` (else ``InputError``)."""
+    if not isinstance(plausibility, str) or plausibility not in PLAUSIBILITY_MODES:
+        raise InputError(f"plausibility must be one of {PLAUSIBILITY_MODES}, got {plausibility!r}.")
+    return plausibility
+
+
+def state_mixup_text(defn, given: "Mapping[str, float]") -> "str | None":
+    """The ``CycleDef.state_mixups`` message for the first given input at or above its limit, else None.
+
+    Example (brayton_regen): "T3 = 1250 K is the regenerator cold outlet in brayton_regen; the turbine inlet is
+    T4. Did you mean T4=1250?" """
+    for mx in getattr(defn, "state_mixups", ()) or ():
+        x = given.get(mx.given)
+        if x is not None and x >= mx.limit:
+            unit = " K" if mx.given[:1] == "T" else ""
+            return (f"{mx.given} = {x:g}{unit} is the {mx.given_role} in {defn.name}; the {mx.meant_role} is "
+                    f"{mx.meant}. Did you mean {mx.meant}={x:g}?")
+    return None
+
+
+def resolve_inputs(system: EquationSystem, raw: "Mapping[str, object]",
+                   plausibility: str = "raise") -> "dict[str, float]":
     """Canonical names and validated float values of user inputs (spec 3 and 9.8), in the given order.
 
     - Names: exact, then a unique case-insensitive match, then the alias table; else ``UnknownInputError``.
@@ -353,9 +413,11 @@ def resolve_inputs(system: EquationSystem, raw: "Mapping[str, object]") -> "dict
       positive kind must be > 0; every value must lie inside the variable's physical range (the solver's
       scan range, spec 9.5), else ``InputError`` naming the input. Without that check a value such as
       T4 = 2e5 K reaches the solver and the no-solution message blames another input.
-    - Plausibility: a given state pressure below 1 000 Pa or state temperature below 100 K emits
-      ``InputPlausibilityWarning``: those usually mean kPa or degrees Celsius were passed.
+    - Plausibility: a given state pressure below 1 000 Pa or state temperature below 100 K usually means kPa,
+      bar or degrees Celsius were passed. ``plausibility="raise"`` (default) raises ``InputError`` with the
+      fix, ``"warn"`` emits ``InputPlausibilityWarning`` instead (the v0.1 behaviour), ``"off"`` skips it.
     """
+    check_plausibility_mode(plausibility)
     cyc = _cycle_name(system)
     sids = state_ids(system.cycle) if system.cycle is not None else ()
     out: "dict[str, float]" = {}
@@ -373,17 +435,32 @@ def resolve_inputs(system: EquationSystem, raw: "Mapping[str, object]") -> "dict
             raise InputError(f"{cyc}: {name} = {_with_unit(x, unit)} must be > 0.")
         lo, hi, _ = system.scan_range[name]
         if not lo <= x <= hi:
+            hint = ""
+            if not unit and hi == 1.0 and 1.0 < x <= 100.0:     # a percentage given for a fraction
+                hint = f"; efficiencies and ratios are fractions ({x / 100:g}, not {x:g})"
             raise InputError(f"{cyc}: {name} = {_with_unit(x, unit)} is outside the range thermo_cycles can "
                              f"solve for it ({lo:g} to {_with_unit(hi, unit)}). Check the value and its "
-                             f"units: inputs are SI (K, Pa, m^3/kg, J/kg).")
-        if name[:1] == "P" and name[1:] in sids and x < 1000.0:
-            alt = f"{x:g} bar or {x:g} kPa" if x < 50.0 else f"{x:g} kPa"
-            warnings.warn(f"{name} = {x:g} Pa: did you mean {alt}? thermo_cycles works in SI "
-                          f"(write {name}={x:g}*kPa or {x:g}*bar with thermo_cycles.units).",
-                          InputPlausibilityWarning, stacklevel=2)
-        if name[:1] == "T" and name[1:] in sids and x < 100.0:
-            warnings.warn(f"{name} = {x:g} K: did you mean {x:g} deg C ({x + 273.15:g} K)? thermo_cycles "
-                          f"works in SI (write {name}=degC({x:g}) with thermo_cycles.units).",
-                          InputPlausibilityWarning, stacklevel=2)
+                             f"units: inputs are SI (K, Pa, m^3/kg, J/kg){hint}.")
+        if plausibility != "off":
+            text = None
+            if name[:1] == "P" and name[1:] in sids and x < PLAUSIBLE_P_MIN:
+                alt = f"{x:g} bar or {x:g} kPa" if x < 50.0 else f"{x:g} kPa"
+                text = (f"{name} = {x:g} Pa: did you mean {alt}? thermo_cycles works in SI "
+                        f"(write {name}={x:g}*kPa or {x:g}*bar with thermo_cycles.units).")
+            elif name[:1] == "T" and name[1:] in sids and x < PLAUSIBLE_T_MIN:
+                text = (f"{name} = {x:g} K: did you mean {x:g} deg C ({x + 273.15:g} K)? thermo_cycles "
+                        f"works in SI (write {name}=degC({x:g}) with thermo_cycles.units).")
+            if text is not None:
+                if plausibility == "raise":
+                    raise InputError(f"{cyc}: {text} If {_with_unit(x, unit or 'SI')} is really meant, pass "
+                                     f"plausibility='warn' or plausibility='off'.")
+                warnings.warn(text, InputPlausibilityWarning, stacklevel=2)
         out[name] = x
+    if plausibility != "off" and system.cycle is not None:
+        text = state_mixup_text(system.cycle, out)
+        if text is not None:
+            if plausibility == "raise":
+                raise InputError(f"{cyc}: {text} If {text.split(' is the ')[0]} is really meant, pass "
+                                 f"plausibility='warn' or plausibility='off'.")
+            warnings.warn(text, InputPlausibilityWarning, stacklevel=2)
     return out

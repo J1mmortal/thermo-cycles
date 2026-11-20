@@ -81,6 +81,8 @@ thermo-cycles/
     model/relations.py   Relation + helper constructors
     model/steps.py       process step kinds (isentropic, isochoric, isobaric, isothermal, adiabatic)
     model/cycle_def.py   StepDef, ParamDef, CycleDef, registry (register_cycle, get_cycle, list_cycles)
+    custom.py            v0.1.1: public namespace for custom cycles (CycleDef, StepDef, ParamDef, register_cycle,
+                         Relation, ratio, linear, equal, product, fixed); the three classes also in thermo_cycles
     catalogue/__init__.py   imports the modules below so the registry is populated
     catalogue/piston.py     otto, diesel, dual, atkinson
     catalogue/gas_turbine.py  brayton, brayton_regen
@@ -104,8 +106,10 @@ thermo-cycles/
   Ratios and efficiencies are dimensionless fractions (0.62, not 62 %). Margins in % are the one exception and are
   labelled `_pct`.
 - `thermo_cycles.units` gives you constants so you can write `P1=1*bar` or `T1=degC(25)`. The library never
-  converts silently. A plausibility warning (`InputPlausibilityWarning`) fires when a given pressure is below
-  1 000 Pa or a given temperature is below 100 K, because those usually mean kPa or °C were passed (§9.8).
+  converts silently. A given state pressure below 1 000 Pa or state temperature below 100 K raises `InputError`
+  by default, because those usually mean kPa, bar or °C were passed (§9.8); the keyword
+  `plausibility="warn"` turns this into `InputPlausibilityWarning` (the v0.1 behaviour) and `"off"` skips it
+  (v0.1.1).
 - **Signs:** q > 0 is heat into the working fluid; w > 0 is work done by the fluid. Closed (piston) steps follow
   q − w = Δu and flow (steady-flow) steps follow q − w = Δh. Compression work is therefore negative.
   `q_in` and `q_out` are reported as positive magnitudes: q_in = Σ q over heat_in steps and
@@ -136,7 +140,7 @@ from thermo_cycles import Cycle, IdealGas, AIR, optimise, requirements, describe
 from thermo_cycles.units import kPa, bar, degC
 
 list_cycles()                       # ['atkinson', 'brayton', 'brayton_regen', 'diesel', 'dual', 'otto']
-print(describe("atkinson"))         # steps, parameters, degrees of freedom, typical input sets, references
+print(describe("atkinson"))         # steps, state roles, parameters, degrees of freedom, typical inputs, refs
 
 c = Cycle("otto", T1=288, P1=100*kPa, r_c=10, q_in=1800e3)
 c.states[3].T, c.states[3].P        # 3232.1 K, 1.1223e7 Pa
@@ -179,25 +183,29 @@ Signatures (all keyword-only after the name):
 class Cycle:
     def __init__(self, name: str, *, fluid: Fluid | None = None, limits: Mapping[str, float] | None = None,
                  allow_redundant: bool = False, check: Literal["raise", "warn", "off"] = "raise",
-                 on_violation: Literal["warn", "raise", "ignore"] = "warn", **inputs: float) -> None
+                 on_violation: Literal["warn", "raise", "ignore"] = "warn",
+                 plausibility: Literal["raise", "warn", "off"] = "raise", **inputs: float) -> None
     name: str; definition: CycleDef; fluid: Fluid; inputs: Mapping[str, float]   # canonical names
     states: Mapping[int, State]; hidden_states: Mapping[str, State]
     steps: tuple[StepResult, ...]; results: CycleResults; params: Mapping[str, float]
     margins: MarginReport; cycle_state: CycleState
     def value(self, name: str) -> float
-    def with_inputs(self, **changes: float | None) -> "Cycle"
+    def with_inputs(self, **changes: float | None) -> "Cycle"      # keeps limits, check, on_violation, plausibility
     def plot(self, kind: Literal["Ts", "Pv", "both"] = "Ts", **kw) -> Any
     def summary(self) -> str
     def to_dict(self) -> dict
 
-def requirements(name: str, *, fluid: Fluid | None = None, **inputs: float) -> Requirements
+def requirements(name: str, *, fluid: Fluid | None = None, plausibility: str = "raise",
+                 **inputs: float) -> Requirements
 def describe(name: str) -> str
 def list_cycles() -> list[str]
 def register_cycle(defn: CycleDef, *, replace: bool = False) -> None      # advanced; how the catalogue is built
+# v0.1.1: from thermo_cycles.custom import CycleDef, StepDef, ParamDef, ratio, linear, register_cycle
 def optimise(name: str, *, vary: Mapping[str, tuple[float, float]], maximise: str | Callable | None = None,
              minimise: str | Callable | None = None, fixed: Mapping[str, float] = {},
              limits: Mapping[str, float] = {}, fluid: Fluid | None = None, grid: int = 81,
-             seed: int = 0) -> OptimisationResult
+             seed: int = 0, plausibility: Literal["raise", "warn", "off"] = "raise") -> OptimisationResult
+# solve_cycle(defn, fluid, inputs, *, allow_redundant=False, check="raise", plausibility="raise")  (internal)
 ```
 
 `Cycle` solves eagerly in `__init__` and is immutable afterwards. Errors are raised at construction.
@@ -423,7 +431,8 @@ one, it stays right when a loop is renumbered or extended, and a typo is caught 
 Example: `brayton_regen` has `regenerators=(((2, 3), (5, 6)),)`. The §9.7 regenerator rule uses these sides,
 never the step order.
 
-Validation in `register_cycle` (and `build_system`):
+Validation in `register_cycle` (and `build_system`; v0.1.1: failures raise `CycleDefinitionError`, a
+`ThermoCyclesError` and `ValueError`):
 - the steps form one closed loop through all states in order, and every state appears exactly once as a step
   start;
 - parameter names don't clash with property or result names;
@@ -593,6 +602,10 @@ rather than options.
    (xtol 1e-12 relative).
    - 0 roots -> `NoSolutionError`. It names the inputs involved, e.g. "w_net = 400 kJ/kg exceeds what T1, P1, T3
      allow (max ≈ 329 kJ/kg near r_c = 7.48)". The maximum |g| sample is reported when it can be found.
+     v0.1.1: `solve_cycle` then appends the given inputs at or one step away from the unsolved states (plus
+     given parameters touching them and whole-cycle inputs) with the role of the state each sets, derived from
+     the steps (`model.roles.state_roles`, also shown by `describe()`), e.g. "T3 = 1250 K is the regenerator
+     cold-side outlet in brayton_regen (state 3, before 3->4 heat_in). ... Not solved: the turbine inlet is T4".
    - more than 1 root -> each candidate solution is completed and checked against §9.7. If exactly one is valid it
      is used. Otherwise `AmbiguousSolutionError(variable, candidates)` is raised, for example "r_c = 2.736 or
      20.43; pass r_c explicitly". This is the classic case of w_net given at fixed T_max.
@@ -644,15 +657,25 @@ controls the final report.
 
   These raise `InvalidCycleError` with every `check` mode, `"off"` included. An undefined result is never
   returned. A divide-by-zero in one of these quotients during the solve gives the same error, not
-  `NoSolutionError`.
+  `NoSolutionError`. v0.1.1: so does a singular Jacobian at the solution (`ConvergenceError` from the
+  degenerate guard), when the re-solve without eta_th/mep/bwr shows an undefined result; e.g. diesel
+  T1 = 330 K, P1 = 120 kPa, r_c = 16, cutoff = 1 now gives the zero-heat error with "cutoff = 1 ... is the
+  degenerate limit".
 - Parameters inside their `bounds`.
 - Regenerator, for each pair declared in `regenerators` (cold side a_c->b_c, hot side a_h->b_h): T(a_h) ≥ T(b_c),
   T(b_h) ≥ T(a_c) and T(a_h) ≥ T(a_c), each with a relative tolerance of 1e-9. For brayton_regen these are
   T5 ≥ T3, T6 ≥ T2 and T5 ≥ T2. The third condition is needed because at eps = 1 the first two hold with
   equality even when T5 < T2. The internal steps' q must sum to zero within 1e-6 × max(q_in, the largest
-  internal |q|).
+  internal |q|). v0.1.1: a regenerator pair that exchanges no heat (both sides |q| <= 1e-9 × max(q_in, the
+  largest step |q| or |w|), i.e. eps = 0) is the cycle without regeneration and the ordering rule is skipped,
+  so brayton_regen with eps = 0 equals brayton at any r_p.
 - Message example: "step 2->3 (isochoric, heat_in) has q = −120.4 kJ/kg < 0: T3 = 600 K is below T2 = 689.2 K.
-  Raise T3 / q_in or lower r_c."
+  Raise T3 / q_in or lower r_c." v0.1.1: the advice is checked against the given inputs by a numeric
+  sensitivity (each given input perturbed by 1e-4 relative, nested re-solve, sign of the change of that step's
+  q). The generic advice is kept when every given input it names points the helpful way; otherwise it is
+  replaced by the given inputs only, each in the helpful direction with the value where q reaches 0, e.g. for
+  dual(T1=330, P1=120e3, r_c=15, P3=130e5, T4=2300): "Raise T4 (to >= 2383.3 K), r_c (to >= 15.54) or P1
+  (to >= 124.3 kPa), or lower P3 (to <= 12545.5 kPa) or T1 (to <= 318.5 K)."
 
 ### 9.8 Input validation
 
@@ -660,12 +683,22 @@ Before analysis:
 - Values must be real and finite. NaN, inf and complex values raise `InputError`. Python ints and numpy scalars
   are accepted and converted with `float()`.
 - Variables of positive kind must be > 0.
-- Names are resolved as in §3.
+- Names are resolved as in §3. v0.1.1: an unknown name (`UnknownInputError`, also from `Cycle.value`) lists the
+  known names grouped (state properties and states, parameters, step q/w, cycle quantities), difflib close
+  matches, "<cycle> has no state 9 (states: ...)" for a state number that does not exist, and
+  `describe(name)`.
 - Range: an input outside the solvable range is an `InputError`, not a warning (T outside 1..1e5 K, P outside
   1..1e10 Pa, v outside 1e-6..1e4 m³/kg, eta_th > 1, r_c < 1, ...: the scan ranges of §9.5 and the parameter
-  `bounds`). The message names the input and its range.
-- Plausibility: given P < 1 000 Pa or T < 100 K -> `InputPlausibilityWarning` ("P1 = 100 Pa: did you mean
-  100 kPa? thermo_cycles works in SI").
+  `bounds`). The message names the input and its range. v0.1.1: for a dimensionless input bounded by 1 and a
+  value in (1, 100] it adds "efficiencies and ratios are fractions (0.82, not 82)".
+- Plausibility (v0.1.1): a given state pressure P < 1 000 Pa or state temperature T < 100 K (thresholds strict:
+  1 000 Pa and 100 K pass) raises `InputError` by default ("otto: P1 = 100 Pa: did you mean 100 kPa?
+  thermo_cycles works in SI (write P1=100*kPa or 100*bar with thermo_cycles.units). If 100 Pa is really meant,
+  pass plausibility='warn' or plausibility='off'."). The keyword `plausibility` on `Cycle`, `requirements`,
+  `optimise` and `solve_cycle` (forwarded by `with_inputs`) chooses `"raise"` (default), `"warn"`
+  (`InputPlausibilityWarning`, the v0.1 behaviour) or `"off"`. `optimise` checks the fixed inputs and both
+  bounds once before the search and never for the search points (the thresholds are lower bounds, so every
+  point between accepted bounds is accepted too).
 
 ### 9.9 Why this replaces the mode patterns
 
@@ -726,7 +759,11 @@ class OptimisationResult:
     x: Mapping[str, float]; value: float; cycle: Cycle        # full solved cycle at the optimum
     feasible: bool; active: tuple[str, ...]                   # limits with |margin_pct| < 1e-3 at the optimum
     evaluations: int; history: tuple[tuple[Mapping[str, float], float | None, bool], ...]
-    message: str
+    message: str                 # v0.1.1: with units, "maximum of w_net = 203.45 kJ/kg at r_p = 7.22093; ..."
+    # v0.1.1: repr is one short line (optimum, active, feasible, evaluations); the history stays in .history
+    at_bound: Mapping[str, str]  # v0.1.1: {"r_p": "upper"} when the optimum is within 1e-6 (hi - lo) of a vary
+                                 # bound; the message then says "the optimum is on the upper bound of r_p (30),
+                                 # so it may lie outside the bounds: widen them to check (not an interior optimum)"
 ```
 
 - Before any search, it checks that `fixed` ∪ `vary` keys is well-posed (`requirements` status `ok`). If not, it
@@ -751,7 +788,8 @@ class OptimisationResult:
 ```python
 def plot_cycle(cycle, kind="Ts", *, ax=None, n=100, show_states=True, show_hidden=True,
                logscale_P=False, P_unit="Pa", label=None, arrows=True, **line_kw)  # -> Axes or (Fig, (ax1, ax2))
-def plot_cycles(cycles, kind="Ts", *, ax=None, labels=None, **kw)                   # overlay
+def plot_cycles(cycles, kind="Ts", *, ax=None, labels=None, **kw)                   # overlay; v0.1.1: state
+                                     # labels of the 2nd, 3rd ... cycle are primed (3', 3'') and offset
 Cycle.plot(kind="Ts", **kw)   # -> plot_cycle(self, kind, **kw)
 ```
 
@@ -777,6 +815,8 @@ ThermoCyclesError(Exception)
 │   ├── UnderdeterminedError       (.missing, .given, .add_one_of, .example_sets, .determined)
 │   ├── OverdeterminedError        (.conflicting, .drop_one_of)
 │   └── InconsistentInputError     (.name, .given, .implied)
+├── CycleDefinitionError(ThermoCyclesError, ValueError)   # v0.1.1: bad CycleDef / relation (register_cycle,
+│                                                          # build_system, linear, ...); `except ValueError` works
 ├── NoSolutionError                (.variables, .detail)
 ├── AmbiguousSolutionError         (.variable, .candidates)
 ├── ConvergenceError               (.variables, .residual)
@@ -801,7 +841,7 @@ Cengel's 1.005/0.718 by ≤ 0.07 %, so tolerances are rtol 3e-3 unless stated.
 
 | id | cycle | source | inputs | printed results to assert |
 |---|---|---|---|---|
-| O1 | otto | Univ. Waterloo ME 354 Tutorial wk 8 solution (cold-air, k 1.4, cv 0.718) | r_c 10, T1 288 K, P1 100 kPa, q_in 1800 kJ/kg | T2 723.4 K, P2 2511.9 kPa, T3 3230.4 K, P3 11216.6 kPa, T4 1286 K, P4 445.6 kPa, q_out 716.6 kJ/kg, w_net 1083.4 kJ/kg, eta 0.602, MEP 1456.4 kPa |
+| O1 | otto | Univ. Waterloo ME 354 Tutorial wk 8 solution (cold-air, k 1.4, cv 0.718) | r_c 10, T1 288 K, P1 100 kPa, q_in 1800 kJ/kg | T2 723.4 K, P2 2511.9 kPa, T3 3230.4 K, P3 11216.6 kPa, T4 1286 K, P4 **446.5 kPa** (445.6 on the source sheet is a typo, P4 = P1·T4/T1 = 100·1286/288 = 446.5; confirmed by Jesper 2026-11-16), q_out 716.6 kJ/kg, w_net 1083.4 kJ/kg, eta 0.602, MEP 1456.4 kPa |
 | O2 | otto | Cengel & Boles 7e solutions manual, problem 9-39 (constant cp) | r_c 9.5, T1 308 K, P1 100 kPa, **T4 800 K** | T2 757.9 K, P2 2338 kPa, T3 1969 K, P3 6072 kPa, eta 0.594, MEP 652 kPa (exercises backward propagation) |
 | O3 | otto (loop) | derived from O1 | T1 288, r_c 10, q_in 1800e3, P3 11216.6e3 | P1 = 1e5 within 0.1 % (library gives 99 946 Pa because cv 717.5 vs 718); exercises a torn/Newton block |
 | D1 | diesel | Cengel & Boles 8e SM 9-57 (cold-air) | r_c 22, cutoff 1.8, T1 343 K, P1 97 kPa | T2 1181 K, T3 2126 K, T4 781 K. The SM's Q_in line uses 2216 K (typo), so only states are asserted; library q_in 949.1 kJ/kg, eta 0.66884 |

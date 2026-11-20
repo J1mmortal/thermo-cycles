@@ -36,7 +36,8 @@ from .fluids import AIR
 from .margins import MarginReport, check_limit_value, parse_limit_key
 from .model.cycle_def import get_cycle
 from .results import CycleResults
-from .solver import raise_for, resolve_name, system_for
+from .solver import check_plausibility_mode, raise_for, resolve_name, system_for
+from .solver.system import _unit as _sys_unit
 
 __all__ = ["optimise", "OptimisationResult", "ACTIVE_PCT"]
 
@@ -44,12 +45,13 @@ ACTIVE_PCT = 1e-3                 # a limit is active when |margin_pct| < ACTIVE
 _N_STARTS = 3                     # SLSQP starts from the best feasible Sobol samples (spec 12)
 _SOBOL_PER_DIM = 64               # Sobol sample size per variable (spec 12)
 _X_RTOL = 1e-12                   # relative x tolerance of brentq and the bisections
+_BOUND_RTOL = 1e-6                # an optimum within this fraction of (hi - lo) of a vary bound is "at_bound"
 _RESULT_NAMES = tuple(f for f in CycleResults.__dataclass_fields__)
 # errors that say "the inputs themselves are wrong": never turned into an infeasible point
 _STRUCTURAL = (UnderdeterminedError, OverdeterminedError, UnknownInputError, UnknownCycleError)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class OptimisationResult:
     """Outcome of ``optimise`` (spec 12).
 
@@ -58,6 +60,8 @@ class OptimisationResult:
     search raises). active: limit keys with |margin_pct| < 1e-3 at the optimum, in the order given.
     evaluations: number of distinct cycle evaluations. history: one ``(x, value or None, feasible)`` per
     evaluation, in order (value None when the solve failed). message: how the optimum was found.
+    at_bound (v0.1.1): ``{name: "lower" | "upper"}`` for every varied input whose optimum lies on its vary bound
+    (within 1e-6 of the bound span); then the true optimum may lie outside the bounds.
     """
 
     x: Mapping[str, float]
@@ -68,6 +72,15 @@ class OptimisationResult:
     evaluations: int
     history: "tuple[tuple[Mapping[str, float], float | None, bool], ...]"
     message: str
+    at_bound: Mapping[str, str] = MappingProxyType({})
+
+    def __repr__(self) -> str:
+        """Short: the optimum with units, the active limits and the evaluation count (v0.1.1); the evaluation
+        history stays in ``.history``."""
+        head = self.message.split(";", 1)[0]
+        bound = f"; at_bound={dict(self.at_bound)!r}" if self.at_bound else ""
+        return (f"OptimisationResult({head}; active={self.active!r}{bound}; feasible={self.feasible}; "
+                f"evaluations={self.evaluations}; details in .x, .value, .cycle, .history, .message)")
 
 
 @dataclass
@@ -85,6 +98,34 @@ class _Point:
 
 def _fmt(x: float) -> str:
     return f"{x:.6g}"
+
+
+_RESULT_UNITS = {"T_min": "K", "T_max": "K", "P_min": "Pa", "P_max": "Pa", "v_min": "m^3/kg", "v_max": "m^3/kg",
+                 "mep": "Pa"}
+
+
+def _unit_of(system, name: str) -> str:
+    """SI unit of a variable or result name ('' when dimensionless or unknown, e.g. for a callable)."""
+    if name in _RESULT_UNITS:
+        return _RESULT_UNITS[name]
+    if name in system.variables:
+        return _sys_unit(system, name)
+    return ""
+
+
+def _with_unit(system, name: str, x: float, precise: bool = False) -> str:
+    """``x`` with its unit, in kJ/kg and kPa for energies and pressures (v0.1.1: "218.67 kJ/kg").
+
+    ``precise`` (the objective value) prints energies and pressures with 2 decimals; otherwise 6 significant
+    digits (the varied inputs)."""
+    unit = _unit_of(system, name)
+    if unit == "J/kg":
+        return f"{x / 1e3:.2f} kJ/kg" if precise else f"{x / 1e3:.6g} kJ/kg"
+    if unit == "Pa":
+        return f"{x / 1e3:.2f} kPa" if precise else f"{x / 1e3:.6g} kPa"
+    if unit == "K" and precise:
+        return f"{x:.2f} K"
+    return f"{x:.6g} {unit}" if unit else f"{x:.6g}"
 
 
 def _check_bounds(cyc: str, vary, system) -> "dict[str, tuple[float, float]]":
@@ -157,10 +198,10 @@ class _Search:
             return hit
         cycle, error = None, None
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", InputPlausibilityWarning)   # already shown for the bounds
-                cycle = Cycle(self.name, fluid=self.fluid, limits=self.limits or None, on_violation="ignore",
-                              **self.fixed, **self.xmap(x))
+            # plausibility was checked once for the fixed inputs and both bounds before the search (the
+            # thresholds are lower bounds, so every point between accepted bounds is accepted too)
+            cycle = Cycle(self.name, fluid=self.fluid, limits=self.limits or None, on_violation="ignore",
+                          plausibility="off", **self.fixed, **self.xmap(x))
         except _STRUCTURAL:
             raise
         except ThermoCyclesError as e:                 # no solution, invalid cycle, ...: an infeasible point
@@ -384,14 +425,17 @@ def _no_feasible(s: _Search) -> NoFeasiblePointError:
 def optimise(name: str, *, vary: Mapping[str, "tuple[float, float]"], maximise: "str | Callable | None" = None,
              minimise: "str | Callable | None" = None, fixed: Mapping[str, float] = {},
              limits: Mapping[str, float] = {}, fluid=None, grid: int = 81,
-             seed: int = 0) -> OptimisationResult:
+             seed: int = 0, plausibility: str = "raise") -> OptimisationResult:
     """Maximise or minimise a cycle result over the inputs in ``vary`` (spec 12).
 
     vary: ``{input: (lo, hi)}``; fixed: the other inputs; together they must be well-posed. maximise /
     minimise (exactly one): a result or solved-variable name (``eta_th``, ``w_net``, ``mep``, ``eta_ii``,
     ``bwr``, ``T3``, ...) or a callable ``f(cycle) -> float``. limits: spec 11 keys (``T_max``, ``P2_max``,
     ``eta_th_min``, ...), used as constraints. grid: points of the 1-D grid. seed: the Sobol seed (n-D).
+    plausibility: "raise" (default), "warn" or "off" as for ``Cycle``; checked once, for the fixed inputs and
+    both bounds, before the search, never for the search points.
     """
+    check_plausibility_mode(plausibility)
     defn = get_cycle(name)
     fl = AIR if fluid is None else fluid
     system = system_for(defn, fl)
@@ -415,9 +459,13 @@ def optimise(name: str, *, vary: Mapping[str, "tuple[float, float]"], maximise: 
     objective, label, sign = _objective(cyc, system, maximise, minimise)
 
     # well-posedness first, with the bounds checked against the solver's ranges (spec 12, 9.8)
-    req = requirements(name, fluid=fluid, **dict(fixed), **{k: lo for k, (lo, _) in bounds.items()})
+    req = requirements(name, fluid=fluid, plausibility=plausibility, **dict(fixed),
+                       **{k: lo for k, (lo, _) in bounds.items()})
     raise_for(req, cyc)
-    requirements(name, fluid=fluid, **dict(fixed), **{k: hi for k, (_, hi) in bounds.items()})
+    with warnings.catch_warnings():            # "warn": the fixed inputs were already reported once
+        warnings.simplefilter("ignore", InputPlausibilityWarning)
+        requirements(name, fluid=fluid, plausibility=plausibility, **dict(fixed),
+                     **{k: hi for k, (_, hi) in bounds.items()})
 
     names = tuple(bounds)
     s = _Search(name, fluid, fixed, limits, names, tuple(bounds.values()), objective, label, sign)
@@ -431,12 +479,28 @@ def optimise(name: str, *, vary: Mapping[str, "tuple[float, float]"], maximise: 
     x = MappingProxyType(s.xmap(win.x))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", InputPlausibilityWarning)
-        cycle = Cycle(name, fluid=fluid, limits=dict(limits) or None, **dict(fixed), **x)
+        cycle = Cycle(name, fluid=fluid, limits=dict(limits) or None, plausibility=plausibility, **dict(fixed),
+                      **x)
     active = tuple(k for k, m in cycle.margins.items()
                    if not math.isnan(m.margin_pct) and abs(m.margin_pct) < ACTIVE_PCT)
     sense = "maximum" if sign > 0 else "minimum"
-    msg = (f"{sense} of {label} = {_fmt(win.value)} at {s.where(win.x)}; "
-           f"{'active limits: ' + ', '.join(active) if active else 'no active limit'}. {how}; "
+    where = ", ".join(f"{k} = {_with_unit(system, k, v)}" for k, v in x.items())
+    at_bound = {}
+    for k, (lo, hi) in bounds.items():
+        tol = _BOUND_RTOL * (hi - lo)
+        if abs(x[k] - lo) <= tol:
+            at_bound[k] = "lower"
+        elif abs(x[k] - hi) <= tol:
+            at_bound[k] = "upper"
+    on_bound = ""
+    if at_bound:
+        sides = ", ".join(f"on the {side} bound of {k} ({_fmt(bounds[k][0 if side == 'lower' else 1])})"
+                          for k, side in at_bound.items())
+        on_bound = (f"; the optimum is {sides}, so it may lie outside the bounds: widen them to check "
+                    f"(not an interior optimum)")
+    msg = (f"{sense} of {label} = {_with_unit(system, label, win.value, precise=True)} at {where}; "
+           f"{'active limits: ' + ', '.join(active) if active else 'no active limit'}{on_bound}. {how}; "
            f"{len(s.history)} evaluations.")
     return OptimisationResult(x=x, value=win.value, cycle=cycle, feasible=True, active=active,
-                              evaluations=len(s.history), history=tuple(s.history), message=msg)
+                              evaluations=len(s.history), history=tuple(s.history), message=msg,
+                              at_bound=MappingProxyType(at_bound))

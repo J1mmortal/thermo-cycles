@@ -190,7 +190,7 @@ def test_otto_O1_forward_chain_is_explicit():
     x, res, loops = _forward(s, {"T1": 288.0, "P1": 1e5, "r_c": 10.0, "q_in": 1.8e6})
     assert res < 1e-9
     assert sorted(loops) == [("P2", "T2"), ("P4", "T4")]       # eos k + s(T,P) k, k = 2, 4
-    exp = {"T2": 723.4, "P2": 2511.9e3, "T3": 3230.4, "P3": 11216.6e3, "T4": 1286, "P4": 445.6e3,
+    exp = {"T2": 723.4, "P2": 2511.9e3, "T3": 3230.4, "P3": 11216.6e3, "T4": 1286, "P4": 446.5e3,
            "q_out": 716.6e3, "w_net": 1083.4e3, "eta_th": 0.602, "mep": 1456.4e3}
     for k, v in exp.items():
         assert x[k] == pytest.approx(v, rel=3e-3), k

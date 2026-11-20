@@ -13,7 +13,9 @@ from .errors import InputError, LimitViolationError, LimitViolationWarning, Unkn
 from .fluids import AIR
 from .margins import check_limit_value, describe_violations, evaluate_limits, parse_limit_key
 from .model.cycle_def import get_cycle
-from .solver import CHECK_MODES, analyse, resolve_inputs, resolve_name, solve_cycle, system_for
+from .model.roles import state_roles
+from .solver import (CHECK_MODES, analyse, check_plausibility_mode, resolve_inputs, resolve_name, solve_cycle,
+                     system_for)
 
 __all__ = ["Cycle", "requirements", "describe"]
 
@@ -28,14 +30,25 @@ class Cycle:
     """A solved thermodynamic cycle: pick it by name, give any well-posed set of inputs (SI, per unit mass).
 
     Solves eagerly and is immutable afterwards; errors are raised at construction. ``with_inputs`` returns a
-    new cycle. See spec section 4 for the arguments.
+    new cycle.
+
+    ``thermo_cycles.list_cycles()`` gives the names; ``print(thermo_cycles.describe(name))`` shows a cycle's
+    steps, the role of every state (e.g. the turbine inlet is T3 in "brayton" but T4 in "brayton_regen"), its
+    parameters and typical input sets. The README ("Quick start", "Which cycle?") has worked examples.
+
+    Arguments: ``name``; inputs as keywords (state properties such as ``T1``, ``P1``, parameters such as ``r_c``,
+    ``r_p``, ``eta_c``, or results such as ``q_in``), SI per unit mass; ``fluid`` (default AIR); ``limits``
+    (e.g. ``{"T_max": 2500}``); ``allow_redundant``; ``check`` ("raise", "warn", "off") for the validity
+    checks; ``on_violation`` ("warn", "raise", "ignore") for limits; ``plausibility`` ("raise", "warn", "off")
+    for given temperatures below 100 K and pressures below 1000 Pa (usually deg C, kPa or bar).
     """
 
-    __slots__ = ("_cs", "_limits", "_margins", "_allow_redundant", "_check", "_on_violation")
+    __slots__ = ("_cs", "_limits", "_margins", "_allow_redundant", "_check", "_on_violation", "_plausibility")
 
     def __init__(self, name: str, *, fluid=None, limits: "Mapping[str, float] | None" = None,
                  allow_redundant: bool = False, check: str = "raise", on_violation: str = "warn",
-                 **inputs: float) -> None:
+                 plausibility: str = "raise", **inputs: float) -> None:
+        check_plausibility_mode(plausibility)
         if check not in CHECK_MODES:
             raise InputError(f"check must be one of {CHECK_MODES}, got {check!r}.")
         if on_violation not in VIOLATION_MODES:
@@ -49,7 +62,8 @@ class Cycle:
             for key, val in limits.items():
                 parse_limit_key(key, system)
                 check_limit_value(key, val)
-        cs = solve_cycle(defn, fl, inputs, allow_redundant=bool(allow_redundant), check=check)
+        cs = solve_cycle(defn, fl, inputs, allow_redundant=bool(allow_redundant), check=check,
+                         plausibility=plausibility)
         report = evaluate_limits(cs, limits or {})
         if report.violated and on_violation != "ignore":
             message = describe_violations(report.violated)
@@ -62,6 +76,7 @@ class Cycle:
         object.__setattr__(self, "_allow_redundant", bool(allow_redundant))
         object.__setattr__(self, "_check", check)
         object.__setattr__(self, "_on_violation", on_violation)
+        object.__setattr__(self, "_plausibility", plausibility)
 
     # immutability -------------------------------------------------------------------------------------
     def __setattr__(self, key, value):
@@ -134,7 +149,9 @@ class Cycle:
         try:
             canonical = resolve_name(system, name)
         except UnknownInputError as e:
-            raise UnknownInputError(str(e).replace("unknown input", "unknown variable"), name=e.name,
+            text = str(e).replace("unknown input", "unknown variable").replace("Known inputs:", "Known variables:")
+            text += f"\n  Cycle results are also accepted: {', '.join(res)}."
+            raise UnknownInputError(text, name=e.name,
                                     suggestions=e.suggestions, accepted=e.accepted) from None
         return self._cs.values[canonical]
 
@@ -153,7 +170,7 @@ class Cycle:
                 merged[canonical] = value
         return Cycle(self.name, fluid=self.fluid, limits=dict(self._limits) or None,
                      allow_redundant=self._allow_redundant, check=self._check, on_violation=self._on_violation,
-                     **merged)
+                     plausibility=self._plausibility, **merged)
 
     def plot(self, kind: str = "Ts", **kw) -> Any:
         """T-s ("Ts"), P-v ("Pv") or both plot of this cycle; see ``thermo_cycles.plotting.plot_cycle``."""
@@ -212,19 +229,21 @@ def _num(x: float) -> str:
     return f"{x:.6g}" if math.isfinite(x) else str(x)
 
 
-def requirements(name: str, *, fluid=None, **inputs: float):
+def requirements(name: str, *, fluid=None, plausibility: str = "raise", **inputs: float):
     """What a cycle still needs, or which inputs conflict, for ``inputs`` (spec 9.4); returns ``Requirements``.
 
-    Input names and values are resolved and validated as for ``Cycle`` (unknown names and bad values raise).
+    Input names and values are resolved and validated as for ``Cycle`` (unknown names and bad values raise;
+    ``plausibility`` as for ``Cycle``).
     """
     defn = get_cycle(name)
     system = system_for(defn, _fluid_or_air(fluid))
-    given = resolve_inputs(system, inputs)
+    given = resolve_inputs(system, inputs, check_plausibility_mode(plausibility))
     return analyse(system, list(given))
 
 
 def describe(name: str) -> str:
-    """Text description of a catalogue cycle (spec section 4): title, numbered steps, parameters with
+    """Text description of a catalogue cycle (spec section 4): title, numbered steps, the role of every state
+    in words (e.g. "4: turbine inlet (after 3->4 heat_in)"), parameters with
     descriptions and defaults, degrees of freedom, typical input sets and references.
 
     ``name`` is looked up as for ``Cycle`` (case-insensitive, aliases). Raises ``UnknownCycleError`` otherwise.
@@ -238,6 +257,13 @@ def describe(name: str) -> str:
             "", "Steps:"]
     out += [f"  {st.a}->{st.b} {st.kind} ({st.role})"
             + (f", efficiency {st.efficiency}" if st.efficiency else "") for st in defn.steps]
+    out += ["", "State roles:"] + [f"  {sid}: {words}" for sid, words in state_roles(defn).items()]
+    inlets = [sid for sid, words in state_roles(defn).items() if words.startswith("turbine inlet")]
+    if inlets:
+        out.append(f"Turbine inlet: T{inlets[0]}.")
+    for mx in defn.state_mixups:
+        out.append(f"Note: {mx.given} is the {mx.given_role}, not the {mx.meant_role}; a given {mx.given} >= "
+                   f"{mx.limit:g} K raises InputError (did you mean {mx.meant}?).")
     out += ["", "Parameters:"]
     if defn.params:
         for p in defn.params:
